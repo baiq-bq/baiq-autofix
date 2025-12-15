@@ -48,7 +48,7 @@ function runCodexExec(params: {
   openaiApiKey: string;
   model?: string;
 }): ExecResult {
-  const args = ["exec", "--approval-mode", "full-auto", "--full-auto-error-mode", "ask-user", "--quiet"];
+  const args = ["exec", "--full-auto"];
 
   if (params.model) {
     args.push("--model", params.model);
@@ -57,7 +57,7 @@ function runCodexExec(params: {
   args.push(params.prompt);
 
   core.info("Running Codex CLI...");
-  core.info(`codex ${args.slice(0, -1).join(" ")} "<prompt>"`);
+  core.info(`codex ${args.join(" ")} "<prompt>"`);
 
   const result = spawnSync("codex", args, {
     cwd: params.workingDirectory,
