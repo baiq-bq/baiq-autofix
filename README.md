@@ -220,7 +220,7 @@ It triggers when an issue is labeled `autofix` and runs `npm test` before openin
 - The action only runs when the issue has the `required-label` (default: `autofix`).
 - If tests fail after Codex makes changes, the action comments on the issue and does **not** open a PR.
 - Codex CLI is instructed not to modify lockfiles or `.github/workflows/` files.
-- Codex CLI runs with `--approval-mode full-auto` for non-interactive execution in CI.
+- Codex CLI runs with `--full-auto` for non-interactive execution in CI.
 
 ## Development
 

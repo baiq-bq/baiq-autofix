@@ -59,11 +59,12 @@ function exec(cmd, opts) {
         return { stdout, stderr: "", exitCode: 0 };
     }
     catch (err) {
-        const stdout = err?.stdout?.toString?.() ?? "";
-        const stderr = err?.stderr?.toString?.() ?? err?.message ?? "";
+        const e = err;
+        const stdout = e?.stdout?.toString?.() ?? "";
+        const stderr = e?.stderr?.toString?.() ?? e?.message ?? "";
         if (!opts?.silent)
             core.info(cmd);
-        return { stdout, stderr, exitCode: err?.status ?? 1 };
+        return { stdout, stderr, exitCode: e?.status ?? 1 };
     }
 }
 function installCodexCli(version) {
@@ -76,20 +77,13 @@ function installCodexCli(version) {
     core.info("Codex CLI installed successfully.");
 }
 function runCodexExec(params) {
-    const args = [
-        "exec",
-        "--approval-mode",
-        "full-auto",
-        "--full-auto-error-mode",
-        "ask-user",
-        "--quiet",
-    ];
+    const args = ["exec", "--full-auto"];
     if (params.model) {
         args.push("--model", params.model);
     }
     args.push(params.prompt);
     core.info("Running Codex CLI...");
-    core.info(`codex ${args.slice(0, -1).join(" ")} "<prompt>"`);
+    core.info(`codex ${args.join(" ")} "<prompt>"`);
     const result = (0, child_process_1.spawnSync)("codex", args, {
         cwd: params.workingDirectory,
         encoding: "utf8",
@@ -115,9 +109,7 @@ function buildCodexPrompt(params) {
         `ISSUE TITLE: ${params.issueTitle}\n\n` +
         `ISSUE BODY:\n${params.issueBody}\n\n`;
     if (params.testFailureOutput) {
-        prompt +=
-            "TEST FAILURE OUTPUT (from running the specific test before fix):\n" +
-                `${params.testFailureOutput}\n\n`;
+        prompt += "TEST FAILURE OUTPUT (from running the specific test before fix):\n" + `${params.testFailureOutput}\n\n`;
     }
     prompt +=
         "YOUR TASK:\n" +
@@ -151,9 +143,7 @@ async function run() {
         if (!issueNumber)
             throw new Error("No issue number found in the event payload.");
         const labels = Array.isArray(issue?.labels)
-            ? issue.labels
-                .map((l) => (typeof l === "string" ? l : l?.name))
-                .filter((n) => typeof n === "string")
+            ? issue.labels.map((l) => (typeof l === "string" ? l : l?.name)).filter((n) => typeof n === "string")
             : [];
         if (requiredLabel && !labels.includes(requiredLabel)) {
             core.info(`Issue #${issueNumber} does not have label '${requiredLabel}'. Skipping.`);

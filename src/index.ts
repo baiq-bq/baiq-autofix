@@ -1,8 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { execSync, spawnSync } from "child_process";
-import * as fs from "fs";
-import * as path from "path";
 
 import { extractIssueFormFieldValue, parseGitHubIssueRef, truncate } from "./lib";
 
@@ -25,11 +23,12 @@ function exec(cmd: string, opts?: { silent?: boolean; env?: NodeJS.ProcessEnv })
     });
     if (!opts?.silent) core.info(cmd);
     return { stdout, stderr: "", exitCode: 0 };
-  } catch (err: any) {
-    const stdout = err?.stdout?.toString?.() ?? "";
-    const stderr = err?.stderr?.toString?.() ?? err?.message ?? "";
+  } catch (err: unknown) {
+    const e = err as { stdout?: Buffer; stderr?: Buffer; message?: string; status?: number };
+    const stdout = e?.stdout?.toString?.() ?? "";
+    const stderr = e?.stderr?.toString?.() ?? e?.message ?? "";
     if (!opts?.silent) core.info(cmd);
-    return { stdout, stderr, exitCode: err?.status ?? 1 };
+    return { stdout, stderr, exitCode: e?.status ?? 1 };
   }
 }
 
@@ -49,14 +48,7 @@ function runCodexExec(params: {
   openaiApiKey: string;
   model?: string;
 }): ExecResult {
-  const args = [
-    "exec",
-    "--approval-mode",
-    "full-auto",
-    "--full-auto-error-mode",
-    "ask-user",
-    "--quiet",
-  ];
+  const args = ["exec", "--full-auto"];
 
   if (params.model) {
     args.push("--model", params.model);
@@ -65,7 +57,7 @@ function runCodexExec(params: {
   args.push(params.prompt);
 
   core.info("Running Codex CLI...");
-  core.info(`codex ${args.slice(0, -1).join(" ")} "<prompt>"`);
+  core.info(`codex ${args.join(" ")} "<prompt>"`);
 
   const result = spawnSync("codex", args, {
     cwd: params.workingDirectory,
@@ -85,11 +77,7 @@ function runCodexExec(params: {
   };
 }
 
-function buildCodexPrompt(params: {
-  issueTitle: string;
-  issueBody: string;
-  testFailureOutput?: string;
-}): string {
+function buildCodexPrompt(params: { issueTitle: string; issueBody: string; testFailureOutput?: string }): string {
   let prompt =
     "You are fixing a bug in this codebase based on a GitHub bug report issue.\n\n" +
     "The bug report structure is:\n" +
@@ -100,9 +88,7 @@ function buildCodexPrompt(params: {
     `ISSUE BODY:\n${params.issueBody}\n\n`;
 
   if (params.testFailureOutput) {
-    prompt +=
-      "TEST FAILURE OUTPUT (from running the specific test before fix):\n" +
-      `${params.testFailureOutput}\n\n`;
+    prompt += "TEST FAILURE OUTPUT (from running the specific test before fix):\n" + `${params.testFailureOutput}\n\n`;
   }
 
   prompt +=
@@ -137,14 +123,14 @@ async function run(): Promise<void> {
       return;
     }
 
-    const issue = (github.context.payload as any)?.issue;
+    const issue = (
+      github.context.payload as { issue?: { number?: number; labels?: Array<string | { name?: string }> } }
+    )?.issue;
     issueNumber = issue?.number;
     if (!issueNumber) throw new Error("No issue number found in the event payload.");
 
     const labels: string[] = Array.isArray(issue?.labels)
-      ? issue.labels
-          .map((l: any) => (typeof l === "string" ? l : l?.name))
-          .filter((n: unknown): n is string => typeof n === "string")
+      ? issue.labels.map((l) => (typeof l === "string" ? l : l?.name)).filter((n): n is string => typeof n === "string")
       : [];
 
     if (requiredLabel && !labels.includes(requiredLabel)) {

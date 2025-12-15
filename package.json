@@ -11,7 +11,15 @@
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
     "format": "prettier --write src test",
-    "format:check": "prettier --check src test"
+    "format:check": "prettier --check src test",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,js}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": "prettier --write"
   },
   "dependencies": {
     "@actions/core": "^1.11.1",
@@ -19,13 +27,15 @@
     "openai": "6.10.0"
   },
   "devDependencies": {
-    "@types/node": "^24.10.0",
-    "typescript": "^5.7.2",
-    "@vercel/ncc": "^0.38.4",
-    "tsx": "^4.19.2",
     "@eslint/js": "^9.17.0",
-    "typescript-eslint": "^8.18.1",
+    "@types/node": "^24.10.0",
+    "@vercel/ncc": "^0.38.4",
     "eslint": "^9.17.0",
-    "prettier": "^3.4.2"
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1"
   }
 }
