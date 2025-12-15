@@ -84,7 +84,9 @@ async function generateText(params: {
       }
 
       const delayMs = Math.min(1000 * Math.pow(2, attempt), 10000);
-      core.warning(`OpenAI request failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delayMs}ms: ${lastError.message}`);
+      core.warning(
+        `OpenAI request failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delayMs}ms: ${lastError.message}`
+      );
       await sleep(delayMs);
     }
   }
@@ -108,7 +110,7 @@ async function askForFilesToRead(params: {
     "(3) a BUG DESCRIPTION explaining expected vs actual behavior. " +
     "If automated tests exist, the TEST FAILURE OUTPUT is also provided showing the actual test errors. " +
     "Given the issue and repository file list, choose up to 8 files that are most relevant to inspect for fixing the bug. " +
-    "Return ONLY valid JSON of the form: {\"files\":[\"path1\",\"path2\"]}.";
+    'Return ONLY valid JSON of the form: {"files":["path1","path2"]}.';
 
   let input =
     `Issue title:\n${params.issueTitle}\n\n` +
@@ -241,11 +243,9 @@ async function run(): Promise<void> {
 
     // Extract test commands from issue body, fallback to action inputs
     const testCommandSpecific =
-      extractIssueFormFieldValue(issueBody, "Test command (specific test for this bug)") ||
-      testCommandSpecificFallback;
+      extractIssueFormFieldValue(issueBody, "Test command (specific test for this bug)") || testCommandSpecificFallback;
     const testCommandSuite =
-      extractIssueFormFieldValue(issueBody, "Test command (full suite for regression)") ||
-      testCommandSuiteFallback;
+      extractIssueFormFieldValue(issueBody, "Test command (full suite for regression)") || testCommandSuiteFallback;
 
     const userStoryRef = parseGitHubIssueRef({
       input: userStoryRefRaw,
@@ -270,11 +270,11 @@ async function run(): Promise<void> {
           "REFERENCED USER STORY ISSUE\n" +
             `URL: ${userStoryRef.url}\n` +
             `Title: ${refIssue.data.title ?? ""}\n\n` +
-            `Body:\n${refIssue.data.body ?? ""}\n`,
+            `Body:\n${refIssue.data.body ?? ""}\n`
         );
       } catch (e) {
         core.warning(
-          `Failed to fetch referenced user story issue (${userStoryRef.url}). Continuing without it. ${e instanceof Error ? e.message : String(e)}`,
+          `Failed to fetch referenced user story issue (${userStoryRef.url}). Continuing without it. ${e instanceof Error ? e.message : String(e)}`
         );
       }
     }
@@ -290,18 +290,18 @@ async function run(): Promise<void> {
           "REFERENCED TEST CASE ISSUE\n" +
             `URL: ${testCaseRef.url}\n` +
             `Title: ${refIssue.data.title ?? ""}\n\n` +
-            `Body:\n${refIssue.data.body ?? ""}\n`,
+            `Body:\n${refIssue.data.body ?? ""}\n`
         );
       } catch (e) {
         core.warning(
-          `Failed to fetch referenced test case issue (${testCaseRef.url}). Continuing without it. ${e instanceof Error ? e.message : String(e)}`,
+          `Failed to fetch referenced test case issue (${testCaseRef.url}). Continuing without it. ${e instanceof Error ? e.message : String(e)}`
         );
       }
     }
 
     const issueBodyForPrompt = truncate(
       issueBody + (referencedContexts.length ? `\n\n${referencedContexts.join("\n\n")}` : ""),
-      180_000,
+      180_000
     );
 
     const repoResponse = await octokit.rest.repos.get({ owner, repo });

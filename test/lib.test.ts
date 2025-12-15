@@ -51,7 +51,8 @@ test("extractDiffOnly throws when no diff exists", () => {
 });
 
 test("validateDiff rejects lockfile changes", () => {
-  const diff = "diff --git a/package-lock.json b/package-lock.json\n--- a/package-lock.json\n+++ b/package-lock.json\n@@\n";
+  const diff =
+    "diff --git a/package-lock.json b/package-lock.json\n--- a/package-lock.json\n+++ b/package-lock.json\n@@\n";
   assert.throws(() => validateDiff(diff));
 });
 
@@ -76,11 +77,11 @@ test("extractIssueFormFieldValue extracts single-line field", () => {
 
   assert.equal(
     extractIssueFormFieldValue(body, "User story issue (reference)"),
-    "https://github.com/acme/roadmap/issues/123",
+    "https://github.com/acme/roadmap/issues/123"
   );
   assert.equal(
     extractIssueFormFieldValue(body, "Test case issue (reference)"),
-    "https://github.com/acme/app/issues/456",
+    "https://github.com/acme/app/issues/456"
   );
 });
 
