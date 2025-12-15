@@ -171,9 +171,7 @@ function buildAiderPrompt(params) {
 }
 async function generatePRDescription(params) {
     const openai = new openai_1.default({ apiKey: params.openaiApiKey });
-    const filesContent = params.changedFiles
-        .map((f) => `=== FILE: ${f.path} ===\n${f.content}`)
-        .join("\n\n");
+    const filesContent = params.changedFiles.map((f) => `=== FILE: ${f.path} ===\n${f.content}`).join("\n\n");
     const prompt = `You are a senior software engineer writing a pull request description for a bug fix.
 
 BUG REPORT:
