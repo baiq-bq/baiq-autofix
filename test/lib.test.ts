@@ -41,7 +41,7 @@ test("safeRepoRelativePath resolves within repo", () => {
 });
 
 test("extractDiffOnly returns diff when prefixed with chatter", () => {
-  const text = "hello\n\ndiff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@\n";
+  const text = "hello\n\ndiff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n";
   const diff = extractDiffOnly(text);
   assert.ok(diff.startsWith("diff --git"));
 });
@@ -51,7 +51,7 @@ test("extractDiffOnly throws when no diff exists", () => {
 });
 
 test("extractDiffOnly strips markdown code fences", () => {
-  const text = "```diff\ndiff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@\n```";
+  const text = "```diff\ndiff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n```";
   const diff = extractDiffOnly(text);
   assert.ok(diff.startsWith("diff --git"));
   assert.ok(!diff.includes("```"));
@@ -65,7 +65,7 @@ test("extractDiffOnly handles --- a/ format without git header", () => {
 
 test("validateDiff rejects lockfile changes", () => {
   const diff =
-    "diff --git a/package-lock.json b/package-lock.json\n--- a/package-lock.json\n+++ b/package-lock.json\n@@\n";
+    "diff --git a/package-lock.json b/package-lock.json\n--- a/package-lock.json\n+++ b/package-lock.json\n@@ -1,3 +1,3 @@\n";
   assert.throws(() => validateDiff(diff));
 });
 
@@ -75,7 +75,27 @@ test("validateDiff rejects binary patches", () => {
 });
 
 test("validateDiff allows simple text diff", () => {
+  const diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n";
+  validateDiff(diff);
+});
+
+test("validateDiff rejects malformed hunk headers without line numbers", () => {
   const diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@\n";
+  assert.throws(() => validateDiff(diff), /malformed hunk headers/);
+});
+
+test("validateDiff rejects hunk headers with partial line numbers", () => {
+  const diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 @@\n";
+  assert.throws(() => validateDiff(diff), /malformed hunk headers/);
+});
+
+test("validateDiff accepts hunk headers with optional context", () => {
+  const diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@ function name\n";
+  validateDiff(diff);
+});
+
+test("validateDiff accepts hunk headers with line counts", () => {
+  const diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -10,7 +10,8 @@\n";
   validateDiff(diff);
 });
 

@@ -84,6 +84,34 @@ export function validateDiff(diff: string): void {
   if (/^GIT binary patch/m.test(diff)) {
     throw new Error("Binary patches are not supported.");
   }
+
+  // Validate hunk headers have proper line numbers (e.g., @@ -1,3 +1,3 @@)
+  // A valid hunk header must have at least @@ -N +N @@ or @@ -N,M +N,M @@
+  const hunkHeaderPattern = /^@@\s+-\d+(,\d+)?\s+\+\d+(,\d+)?\s+@@/;
+  const malformedHunkPattern = /^@@\s*$/m;
+
+  if (malformedHunkPattern.test(diff)) {
+    throw new Error(
+      "Generated diff has malformed hunk headers (missing line numbers). " +
+        "Expected format: @@ -start,count +start,count @@"
+    );
+  }
+
+  // Check that at least one valid hunk header exists
+  const lines = diff.split("\n");
+  const hasHunkHeader = lines.some((line) => line.startsWith("@@"));
+  if (hasHunkHeader) {
+    const allHunksValid = lines
+      .filter((line) => line.startsWith("@@"))
+      .every((line) => hunkHeaderPattern.test(line));
+
+    if (!allHunksValid) {
+      throw new Error(
+        "Generated diff has malformed hunk headers (missing line numbers). " +
+          "Expected format: @@ -start,count +start,count @@"
+      );
+    }
+  }
 }
 
 export function extractIssueFormFieldValue(issueBody: string, label: string): string | undefined {

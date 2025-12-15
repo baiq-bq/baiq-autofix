@@ -220,6 +220,7 @@ It triggers when an issue is labeled `autofix` and runs `npm test` before openin
 - The action only runs when the issue has the `required-label` (default: `autofix`).
 - If `test-command` is set and tests fail, the action comments on the issue and does **not** open a PR.
 - The action will not modify lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`) or `.github/workflows/` files.
+- The action validates that generated diffs have properly formatted hunk headers with line numbers (e.g., `@@ -1,3 +1,3 @@`).
 
 ## Development
 
