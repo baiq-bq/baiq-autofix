@@ -9,6 +9,7 @@ A GitHub Action that automatically fixes bugs using [OpenAI Codex CLI](https://g
 1. A bug issue is opened (or labeled with `autofix`).
 2. The action reads the issue body and extracts:
    - References to **user story** and **test case** issues
+   - **Branch where bug was discovered** (fix will be created from and PR will target this branch)
    - **Specific test command** (for this bug)
    - **Full test suite command** (for regression check)
 3. It fetches the referenced issues and includes them as context.
@@ -30,6 +31,7 @@ A GitHub Action that automatically fixes bugs using [OpenAI Codex CLI](https://g
 | `test-command-specific` | ❌ | (empty) | Fallback command for specific bug test (overridden by issue field) |
 | `test-command-suite` | ❌ | (empty) | Fallback command for full test suite (overridden by issue field) |
 | `codex-version` | ❌ | (latest) | Version of `@openai/codex` to install |
+| `working-directory` | ❌ | (repo root) | Working directory for test commands and Codex CLI |
 
 ## Outputs
 
@@ -122,6 +124,13 @@ body:
       required: true
 
   - type: input
+    id: branch
+    attributes:
+      label: Branch where bug was discovered
+      description: The branch where the bug was found. The fix will be created from this branch and the PR will target it.
+      placeholder: "main"
+
+  - type: input
     id: test_command_specific
     attributes:
       label: Test command (specific test for this bug)
@@ -185,6 +194,7 @@ To have the action run E2E tests (e.g., Playwright) before opening a PR:
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+    working-directory: my-app  # if tests are in a subdirectory
     test-command: npm run e2e
 ```
 
@@ -218,6 +228,7 @@ It triggers when an issue is labeled `autofix` and runs `npm test` before openin
 
 - The workflow must have `contents: write`, `pull-requests: write`, and `issues: write` permissions.
 - The action only runs when the issue has the `required-label` (default: `autofix`).
+- If a branch is specified in the issue, the fix is created from that branch and the PR targets it.
 - If tests fail after Codex makes changes, the action comments on the issue and does **not** open a PR.
 - Codex CLI is instructed not to modify lockfiles or `.github/workflows/` files.
 - Codex CLI runs with `--full-auto` for non-interactive execution in CI.

@@ -35,11 +35,20 @@ body:
       required: true
 
   - type: input
+    id: branch
+    attributes:
+      label: Branch where bug was discovered
+      description: The branch where the bug was found. The fix will be created from this branch and the PR will target it.
+      placeholder: "main"
+    validations:
+      required: false
+
+  - type: input
     id: test_command_specific
     attributes:
       label: Test command (specific test for this bug)
       description: Command to run the specific test that verifies this bug. The action runs this BEFORE generating the fix to capture failure output.
-      placeholder: "npm run e2e:verification -- --grep \"TC-1\""
+      placeholder: 'npm run e2e:verification -- --grep "TC-1"'
     validations:
       required: false
 
