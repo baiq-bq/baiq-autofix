@@ -69,7 +69,7 @@ test("isRetryableError returns false for non-retryable errors", () => {
   assert.equal(isRetryableError("Model not found"), false);
 });
 
-// Test API key validation pattern (used in runCodexExec)
+// Test API key validation pattern (used in runAider)
 function isValidApiKey(apiKey: string | undefined | null): boolean {
   return !!apiKey && apiKey.trim() !== "";
 }

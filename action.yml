@@ -8,12 +8,17 @@ inputs:
     description: "GitHub token (use secrets.GITHUB_TOKEN)"
     required: true
   openai-api-key:
-    description: "OpenAI API key"
-    required: true
-  model:
-    description: "Model to use with Codex CLI (e.g., gpt-5.1-codex-max, o3, o4-mini)"
+    description: "OpenAI API key (required if using OpenAI models)"
     required: false
-    default: "gpt-5.1-codex-max"
+    default: ""
+  anthropic-api-key:
+    description: "Anthropic API key (required if using Claude models)"
+    required: false
+    default: ""
+  model:
+    description: "Model to use with Aider (e.g., gpt-4o, claude-3-5-sonnet-20241022, o1-preview)"
+    required: false
+    default: "gpt-4o"
   required-label:
     description: "Only run if the issue has this label"
     required: false
@@ -30,12 +35,12 @@ inputs:
     description: "Fallback command for full test suite (overridden by issue field 'Test command (full suite for regression)')"
     required: false
     default: ""
-  codex-version:
-    description: "Version of @openai/codex to install (leave empty for latest)"
+  aider-version:
+    description: "Version of aider-chat to install (leave empty for latest)"
     required: false
     default: ""
   working-directory:
-    description: "Working directory for running test commands and Codex CLI (defaults to repo root)"
+    description: "Working directory for running test commands and Aider (defaults to repo root)"
     required: false
     default: ""
 

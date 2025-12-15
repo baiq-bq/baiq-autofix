@@ -36,70 +36,70 @@ function exec(cmd: string, opts?: { silent?: boolean; env?: NodeJS.ProcessEnv; c
   }
 }
 
-function installCodexCli(version: string): void {
-  core.info(`Installing Codex CLI${version ? ` (version: ${version})` : ""}...`);
-  const pkg = version ? `@openai/codex@${version}` : "@openai/codex";
-  const res = exec(`npm install -g ${pkg}`, { silent: true });
+function installAider(version: string): void {
+  core.info(`Installing Aider${version ? ` (version: ${version})` : ""}...`);
+  const pkg = version ? `aider-chat==${version}` : "aider-chat";
+  const res = exec(`pip install ${pkg}`, { silent: true });
   if (res.exitCode !== 0) {
-    throw new Error(`Failed to install Codex CLI: ${res.stderr || res.stdout}`);
+    throw new Error(`Failed to install Aider: ${res.stderr || res.stdout}`);
   }
-  core.info("Codex CLI installed successfully.");
+  core.info("Aider installed successfully.");
 }
 
-function runCodexExec(params: {
+function runAider(params: {
   prompt: string;
   workingDirectory: string;
-  openaiApiKey: string;
-  model?: string;
+  openaiApiKey?: string;
+  anthropicApiKey?: string;
+  model: string;
 }): ExecResult {
-  // Validate API key is present
-  if (!params.openaiApiKey || params.openaiApiKey.trim() === "") {
+  // Validate at least one API key is present
+  const hasOpenAI = params.openaiApiKey && params.openaiApiKey.trim() !== "";
+  const hasAnthropic = params.anthropicApiKey && params.anthropicApiKey.trim() !== "";
+
+  if (!hasOpenAI && !hasAnthropic) {
     return {
       stdout: "",
-      stderr: "Error: OPENAI_API_KEY is empty or not provided",
+      stderr: "Error: Neither OPENAI_API_KEY nor ANTHROPIC_API_KEY is provided",
       exitCode: 1,
     };
   }
 
-  // Create a clean HOME directory for Codex to avoid cached auth state
-  // This prevents issues where Codex tries to use cached ChatGPT credentials
-  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
-  core.info(`Using clean Codex home directory: ${codexHome}`);
+  // Write prompt to a temp file to avoid shell escaping issues
+  const promptFile = path.join(os.tmpdir(), `aider-prompt-${Date.now()}.txt`);
+  fs.writeFileSync(promptFile, params.prompt, "utf8");
 
-  const args = ["--config", "preferred_auth_method=apikey", "exec", "--full-auto"];
+  // Build aider command arguments
+  // --yes: auto-accept changes (non-interactive)
+  // --no-git: don't auto-commit (we handle git ourselves)
+  // --no-auto-commits: don't auto-commit changes
+  // --model: specify the model
+  // --message-file: read prompt from file
+  const args = ["--yes", "--no-git", "--no-auto-commits", "--model", params.model, "--message-file", promptFile];
 
-  if (params.model) {
-    args.push("--model", params.model);
+  core.info("Running Aider...");
+  core.info(`aider ${args.slice(0, -2).join(" ")} --message-file <prompt>`);
+
+  // Build environment with API keys
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  if (hasOpenAI) {
+    env.OPENAI_API_KEY = params.openaiApiKey;
+  }
+  if (hasAnthropic) {
+    env.ANTHROPIC_API_KEY = params.anthropicApiKey;
   }
 
-  args.push(params.prompt);
-
-  core.info("Running Codex CLI...");
-  core.info(`codex ${args.slice(0, -1).join(" ")} "<prompt>"`);
-
-  const result = spawnSync("codex", args, {
+  const result = spawnSync("aider", args, {
     cwd: params.workingDirectory,
     encoding: "utf8",
-    env: {
-      ...process.env,
-      // Set HOME to clean directory to avoid cached credentials
-      HOME: codexHome,
-      // Ensure XDG directories also point to clean location
-      XDG_CONFIG_HOME: path.join(codexHome, ".config"),
-      XDG_DATA_HOME: path.join(codexHome, ".local", "share"),
-      XDG_CACHE_HOME: path.join(codexHome, ".cache"),
-      // Set the API key
-      OPENAI_API_KEY: params.openaiApiKey,
-      // Disable any potential proxy or endpoint overrides
-      OPENAI_BASE_URL: process.env.OPENAI_BASE_URL || "",
-    },
+    env,
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 600_000, // 10 minute timeout
   });
 
-  // Clean up temp directory
+  // Clean up prompt file
   try {
-    fs.rmSync(codexHome, { recursive: true, force: true });
+    fs.unlinkSync(promptFile);
   } catch {
     // Ignore cleanup errors
   }
@@ -111,7 +111,7 @@ function runCodexExec(params: {
   };
 }
 
-function buildCodexPrompt(params: { issueTitle: string; issueBody: string; testFailureOutput?: string }): string {
+function buildAiderPrompt(params: { issueTitle: string; issueBody: string; testFailureOutput?: string }): string {
   let prompt =
     "You are fixing a bug in this codebase based on a GitHub bug report issue.\n\n" +
     "The bug report structure is:\n" +
@@ -138,14 +138,20 @@ function buildCodexPrompt(params: { issueTitle: string; issueBody: string; testF
 
 async function run(): Promise<void> {
   const ghToken = core.getInput("github-token", { required: true });
-  const openaiApiKey = core.getInput("openai-api-key", { required: true });
-  const model = core.getInput("model") || "gpt-5.1-codex-max";
+  const openaiApiKey = core.getInput("openai-api-key") || "";
+  const anthropicApiKey = core.getInput("anthropic-api-key") || "";
+  const model = core.getInput("model") || "gpt-4o";
   const requiredLabel = core.getInput("required-label") || "autofix";
   const baseBranchInput = core.getInput("base-branch") || "";
   const testCommandSpecificFallback = core.getInput("test-command-specific") || "";
   const testCommandSuiteFallback = core.getInput("test-command-suite") || "";
-  const codexVersion = core.getInput("codex-version") || "";
+  const aiderVersion = core.getInput("aider-version") || "";
   const workingDirectoryInput = core.getInput("working-directory") || "";
+
+  // Validate at least one API key is provided
+  if (!openaiApiKey.trim() && !anthropicApiKey.trim()) {
+    throw new Error("At least one of openai-api-key or anthropic-api-key must be provided");
+  }
 
   let owner: string | undefined;
   let repo: string | undefined;
@@ -278,10 +284,10 @@ async function run(): Promise<void> {
       core.info("No specific test command provided; skipping pre-fix test.");
     }
 
-    // Install Codex CLI
-    installCodexCli(codexVersion);
+    // Install Aider
+    installAider(aiderVersion);
 
-    // Checkout base branch and create working branch BEFORE running Codex
+    // Checkout base branch and create working branch BEFORE running Aider
     core.info(`Checking out base branch ${baseBranch} and creating working branch...`);
     exec(`git fetch origin ${shellEscape(baseBranch)}`);
     exec(`git checkout ${shellEscape(baseBranch)}`);
@@ -290,58 +296,59 @@ async function run(): Promise<void> {
     const branchName = `qa/issue-${issueNumber}-${Date.now()}`;
     exec(`git checkout -b ${shellEscape(branchName)}`);
 
-    // Build the prompt for Codex
-    const prompt = buildCodexPrompt({
+    // Build the prompt for Aider
+    const prompt = buildAiderPrompt({
       issueTitle,
       issueBody: issueBodyForPrompt,
       testFailureOutput,
     });
 
-    // Run Codex CLI - it will modify files directly
-    const codexResult = runCodexExec({
+    // Run Aider - it will modify files directly
+    const aiderResult = runAider({
       prompt,
       workingDirectory,
-      openaiApiKey,
-      model: model || undefined,
+      openaiApiKey: openaiApiKey || undefined,
+      anthropicApiKey: anthropicApiKey || undefined,
+      model,
     });
 
-    core.info("=== CODEX OUTPUT ===");
-    core.info(truncate(codexResult.stdout, 4000));
-    if (codexResult.stderr) {
-      core.info("=== CODEX STDERR ===");
-      core.info(truncate(codexResult.stderr, 2000));
+    core.info("=== AIDER OUTPUT ===");
+    core.info(truncate(aiderResult.stdout, 4000));
+    if (aiderResult.stderr) {
+      core.info("=== AIDER STDERR ===");
+      core.info(truncate(aiderResult.stderr, 2000));
     }
-    core.info("=== END CODEX OUTPUT ===");
+    core.info("=== END AIDER OUTPUT ===");
 
-    if (codexResult.exitCode !== 0) {
+    if (aiderResult.exitCode !== 0) {
       await octokit.rest.issues.createComment({
         owner,
         repo,
         issue_number: issueNumber,
         body:
-          "Codex CLI failed to generate a fix.\n\n" +
+          "Aider failed to generate a fix.\n\n" +
           "Output:\n" +
-          `\n\n\`\`\`\n${truncate((codexResult.stdout + "\n" + codexResult.stderr).trim(), 6000)}\n\`\`\`\n`,
+          `\n\n\`\`\`\n${truncate((aiderResult.stdout + "\n" + aiderResult.stderr).trim(), 6000)}\n\`\`\`\n`,
       });
-      core.setFailed("Codex CLI failed to generate a fix.");
+      core.setFailed("Aider failed to generate a fix.");
       return;
     }
 
-    // Check if Codex made any changes
+    // Check if Aider made any changes
     const status = exec("git status --porcelain", { silent: true }).stdout.trim();
     if (!status) {
       await octokit.rest.issues.createComment({
         owner,
         repo,
         issue_number: issueNumber,
-        body: "Codex analyzed the issue but made no file changes. No PR was created.",
+        body: "Aider analyzed the issue but made no file changes. No PR was created.",
       });
       return;
     }
 
     core.info(`Files changed:\n${status}`);
 
-    // Run FULL TEST SUITE after Codex fix to check for regressions
+    // Run FULL TEST SUITE after Aider fix to check for regressions
     if (testCommandSuite.trim()) {
       core.info(`Running full test suite for regression check: ${testCommandSuite}`);
       const testRes = exec(testCommandSuite, { silent: true, cwd: workingDirectory });
@@ -351,7 +358,7 @@ async function run(): Promise<void> {
           repo,
           issue_number: issueNumber,
           body:
-            "Codex generated a fix, but the full test suite failed (regression detected). PR not opened.\n\n" +
+            "Aider generated a fix, but the full test suite failed (regression detected). PR not opened.\n\n" +
             "Test output:\n" +
             `\n\n\`\`\`\n${truncate((testRes.stdout + "\n" + testRes.stderr).trim(), 8000)}\n\`\`\`\n`,
         });
@@ -380,7 +387,7 @@ async function run(): Promise<void> {
       title: `Fix: ${issueTitle}`.slice(0, 240),
       head: branchName,
       base: baseBranch,
-      body: `Automated fix for issue #${issueNumber} using Codex CLI.\n\nCloses #${issueNumber}.`,
+      body: `Automated fix for issue #${issueNumber} using Aider.\n\nCloses #${issueNumber}.`,
     });
 
     const prUrl = pr.data.html_url;
