@@ -1,0 +1,94 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - main [ref=e3]:
+    - generic [ref=e4]:
+      - heading "Conference registration" [level=1] [ref=e5]
+      - paragraph [ref=e6]: This page is intentionally buggy and is meant to be used with the Baiq Autofix GitHub Action.
+      - generic [ref=e7]:
+        - generic [ref=e8]: Next.js (server actions)
+        - generic [ref=e9]: Cross-field validation
+        - generic [ref=e10]: Intentionally buggy
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]:
+          - generic [ref=e15]: Full name
+          - textbox "Full name" [ref=e16]:
+            - /placeholder: Ada Lovelace
+        - generic [ref=e17]:
+          - generic [ref=e18]: Email
+          - textbox "Email" [ref=e19]:
+            - /placeholder: ada@example.com
+        - generic [ref=e20]:
+          - generic [ref=e21]: Ticket type
+          - combobox "Ticket type Business requires company details." [ref=e22]:
+            - option "Standard" [selected]
+            - option "Business"
+          - generic [ref=e23]: Business requires company details.
+        - generic [ref=e24]:
+          - generic [ref=e25]: Company name (business only)
+          - textbox "Company name (business only)" [ref=e26]:
+            - /placeholder: BQ
+        - generic [ref=e27]:
+          - generic [ref=e28]: Country code (2-letter)
+          - textbox "Country code (2-letter)" [ref=e29]:
+            - /placeholder: ES
+            - text: ES
+        - generic [ref=e30]:
+          - generic [ref=e31]: VAT number (business + EU only)
+          - textbox "VAT number (business + EU only)" [ref=e32]:
+            - /placeholder: ESX12345678
+        - group "Dates" [ref=e33]:
+          - generic [ref=e34]: Dates
+          - generic [ref=e35]:
+            - generic [ref=e36]:
+              - generic [ref=e37]: Start date
+              - textbox "Start date" [ref=e38]
+            - generic [ref=e39]:
+              - generic [ref=e40]: End date
+              - textbox "End date" [ref=e41]
+        - generic [ref=e42]:
+          - generic [ref=e43]: Needs invoiceAdds billing fields and extra validation.
+          - checkbox "Needs invoiceAdds billing fields and extra validation." [ref=e44]
+        - group "Billing (only if invoice is needed)" [ref=e45]:
+          - generic [ref=e46]: Billing (only if invoice is needed)
+          - generic [ref=e47]:
+            - generic [ref=e48]:
+              - generic [ref=e49]: Address line 1
+              - textbox "Address line 1" [ref=e50]:
+                - /placeholder: C/ Example, 123
+            - generic [ref=e51]:
+              - generic [ref=e52]: City
+              - textbox "City" [ref=e53]:
+                - /placeholder: Barcelona
+            - generic [ref=e54]:
+              - generic [ref=e55]: Postal code
+              - textbox "Postal code" [ref=e56]:
+                - /placeholder: "08001"
+            - generic [ref=e57]:
+              - generic [ref=e58]: Billing country code
+              - textbox "Billing country code" [ref=e59]:
+                - /placeholder: ES
+                - text: ES
+        - generic [ref=e60]:
+          - generic [ref=e61]: Discount code
+          - textbox "Discount code Try SAVE10 (also intentionally buggy)." [ref=e62]:
+            - /placeholder: SAVE10
+          - generic [ref=e63]: Try SAVE10 (also intentionally buggy).
+        - generic [ref=e64]:
+          - button "Reset" [ref=e65]
+          - button "Submit registration" [ref=e66] [cursor=pointer]
+      - generic [ref=e68]:
+        - generic [ref=e69]: Success
+        - generic [ref=e70]:
+          - generic [ref=e71]: Registration submitted
+          - generic [ref=e72]: "Final price: 21890 cents"
+      - generic [ref=e73]:
+        - text: "Tip: create GitHub issues from the user stories/test cases in this demo’s README, then label a bug issue with"
+        - code [ref=e74]: autofix
+        - text: to trigger the workflow.
+  - button "Open Next.js Dev Tools" [ref=e80] [cursor=pointer]:
+    - img [ref=e81]
+  - alert [ref=e84]
+```

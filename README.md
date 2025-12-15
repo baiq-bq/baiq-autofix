@@ -2,33 +2,44 @@
 
 > Automatic bug fixes, powered by **Baiq**, the IA of BQ
 
-Automated bug fixer that creates pull requests from bug reports.
+A GitHub Action that automatically fixes bugs by reading issue context, generating a patch with OpenAI, applying it, running tests, and opening a pull request.
 
-This action listens to an issue bug report (same-repo only), uses OpenAI to generate a patch, applies it, runs tests, and then:
+## How it works
 
-- Opens a PR if tests pass
-- Comments on the issue and stops if patch application fails or tests fail
+1. A bug issue is opened (or labeled with `autofix`).
+2. The action reads the issue body and extracts references to a **user story** and a **test case** issue.
+3. It fetches those referenced issues and includes them as context for the AI model.
+4. The model selects relevant files, generates a unified diff, and the action applies it.
+5. If a `test-command` is configured, the action runs tests.
+6. If tests pass (or no test command is set), the action opens a PR and comments on the issue.
+7. If tests fail or the patch cannot be applied, the action comments on the issue with details.
 
 ## Inputs
 
-- `github-token` (required)
-- `openai-api-key` (required)
-- `model` (optional, default: `GPT-5.1-Codex-Max`)
-- `required-label` (optional, default: `autofix`)
-- `base-branch` (optional, default: repo default branch)
-- `test-command` (optional, default: empty; if empty, tests are skipped)
-- `max-diff-lines` (optional, default: `800`)
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `github-token` | ✅ | — | GitHub token (use `secrets.GITHUB_TOKEN`) |
+| `openai-api-key` | ✅ | — | OpenAI API key |
+| `model` | ❌ | `GPT-5.1-Codex-Max` | OpenAI model to use |
+| `required-label` | ❌ | `autofix` | Only run if the issue has this label |
+| `base-branch` | ❌ | repo default | Base branch for the PR |
+| `test-command` | ❌ | (empty) | Command to run before opening a PR. **Set this to run E2E or unit tests.** |
+| `max-diff-lines` | ❌ | `800` | Maximum lines allowed in the generated diff |
 
 ## Outputs
 
-- `pr-url`: URL of the created pull request (only set if a PR is opened)
+| Output | Description |
+|--------|-------------|
+| `pr-url` | URL of the created pull request (only set if a PR is opened) |
 
-## Example workflow (in the target repo)
+## Quick start
 
-Create `.github/workflows/qa-action.yml`:
+### 1. Add the workflow
+
+Create `.github/workflows/autofix.yml` in your repo:
 
 ```yml
-name: QA Autofix
+name: Autofix
 
 on:
   issues:
@@ -48,20 +59,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: your-org/qa-action@v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Baiq Autofix
+        uses: baiq-bq/baiq-autofix@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           test-command: npm test
 ```
 
-## Bug report issue form (recommended)
+### 2. Add the bug report issue template
 
-To ensure the action receives consistent context (user story reference, manual test case, and optional automated test failure), add an Issue Form to the target repo:
-
-- Create: `.github/ISSUE_TEMPLATE/bug_report.yml`
-
-Example template (included in this repo):
+Create `.github/ISSUE_TEMPLATE/bug_report.yml`:
 
 ```yml
 name: Bug report (autofix-ready)
@@ -91,7 +107,12 @@ body:
     id: automated_test
     attributes:
       label: Automated test that fails (if exists)
-      description: Include command, test path/name, and failure output
+      description: |
+        Include command, test path/name, and failure output.
+        Example:
+        Command: npm run e2e:verification
+        Test: e2e/verification.spec.ts - "TC-3: business + EU country requires VAT"
+        Output: Expected error-vatNumber to be visible
     validations:
       required: false
 
@@ -105,15 +126,81 @@ body:
           required: false
 ```
 
-When a bug is filed using that form, the collected fields become part of the issue body. The action reads the issue body, extracts the user story + test case issue references, fetches those issues, and includes their contents in the prompt context.
+### 3. Add the `OPENAI_API_KEY` secret
 
-To trigger this action, add the `autofix` label (or set `required-label` to a different label).
+Go to **Settings → Secrets and variables → Actions** and add `OPENAI_API_KEY`.
+
+### 4. Create issues and trigger the action
+
+1. Create a **user story** issue describing the feature/requirement.
+2. Create a **test case** issue describing the steps, expected result, and actual (buggy) result.
+3. Create a **bug report** issue using the template, linking to the user story and test case.
+4. Add the `autofix` label to the bug report.
+5. The action runs, generates a fix, runs tests, and opens a PR if successful.
+
+## Running E2E tests with the action
+
+To have the action run E2E tests (e.g., Playwright) before opening a PR:
+
+1. Set `test-command` to your E2E command, e.g.:
+   ```yml
+   test-command: npm run e2e
+   ```
+
+2. Ensure your workflow installs browsers if needed:
+   ```yml
+   - name: Install Playwright browsers
+     run: npx playwright install chromium --with-deps
+   ```
+
+3. If tests fail, the action comments on the issue with the failure output and does **not** open a PR.
+
+### Example with E2E
+
+```yml
+- name: Install Playwright browsers
+  run: npx playwright install chromium --with-deps
+
+- name: Run Baiq Autofix
+  uses: baiq-bq/baiq-autofix@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+    test-command: npm run e2e
+```
+
+## Included demo app
+
+This repo includes an **intentionally buggy** Next.js demo app for showcasing the action:
+
+```
+examples/nextjs-form-demo/
+```
+
+The demo includes:
+- A registration form with cross-field validation
+- 4 intentional bugs
+- Playwright E2E tests (`discovery` suite passes, `verification` suite fails until bugs are fixed)
+- Pre-written user story, test case, and bug report issue texts
+
+See [`examples/nextjs-form-demo/README.md`](examples/nextjs-form-demo/README.md) for full instructions.
+
+### Dogfooding workflow
+
+This repo has a workflow to dogfood the action on itself:
+
+```
+.github/workflows/autofix-demo.yml
+```
+
+It triggers when an issue is labeled `autofix` and runs `npm test` before opening a PR.
 
 ## Notes
 
-- The workflow must run with `contents: write` and `pull-requests: write` so the action can push branches and create PRs.
-- The action only runs when the issue contains the `required-label` label (default: `autofix`).
-- If `test-command` is set and tests fail, the action comments on the issue and does not open a PR.
+- The workflow must have `contents: write`, `pull-requests: write`, and `issues: write` permissions.
+- The action only runs when the issue has the `required-label` (default: `autofix`).
+- If `test-command` is set and tests fail, the action comments on the issue and does **not** open a PR.
+- The action will not modify lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`) or `.github/workflows/` files.
 
 ## Development
 
