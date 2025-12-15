@@ -1,6 +1,9 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { execSync, spawnSync } from "child_process";
+import * as os from "os";
+import * as path from "path";
+import * as fs from "fs";
 
 import { extractIssueFormFieldValue, parseGitHubIssueRef, truncate } from "./lib";
 
@@ -49,6 +52,20 @@ function runCodexExec(params: {
   openaiApiKey: string;
   model?: string;
 }): ExecResult {
+  // Validate API key is present
+  if (!params.openaiApiKey || params.openaiApiKey.trim() === "") {
+    return {
+      stdout: "",
+      stderr: "Error: OPENAI_API_KEY is empty or not provided",
+      exitCode: 1,
+    };
+  }
+
+  // Create a clean HOME directory for Codex to avoid cached auth state
+  // This prevents issues where Codex tries to use cached ChatGPT credentials
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "codex-home-"));
+  core.info(`Using clean Codex home directory: ${codexHome}`);
+
   const args = ["--config", "preferred_auth_method=apikey", "exec", "--full-auto"];
 
   if (params.model) {
@@ -58,18 +75,34 @@ function runCodexExec(params: {
   args.push(params.prompt);
 
   core.info("Running Codex CLI...");
-  core.info(`codex ${args.join(" ")} "<prompt>"`);
+  core.info(`codex ${args.slice(0, -1).join(" ")} "<prompt>"`);
 
   const result = spawnSync("codex", args, {
     cwd: params.workingDirectory,
     encoding: "utf8",
     env: {
       ...process.env,
+      // Set HOME to clean directory to avoid cached credentials
+      HOME: codexHome,
+      // Ensure XDG directories also point to clean location
+      XDG_CONFIG_HOME: path.join(codexHome, ".config"),
+      XDG_DATA_HOME: path.join(codexHome, ".local", "share"),
+      XDG_CACHE_HOME: path.join(codexHome, ".cache"),
+      // Set the API key
       OPENAI_API_KEY: params.openaiApiKey,
+      // Disable any potential proxy or endpoint overrides
+      OPENAI_BASE_URL: process.env.OPENAI_BASE_URL || "",
     },
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 600_000, // 10 minute timeout
   });
+
+  // Clean up temp directory
+  try {
+    fs.rmSync(codexHome, { recursive: true, force: true });
+  } catch {
+    // Ignore cleanup errors
+  }
 
   return {
     stdout: result.stdout ?? "",
