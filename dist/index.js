@@ -77,14 +77,7 @@ function installCodexCli(version) {
     core.info("Codex CLI installed successfully.");
 }
 function runCodexExec(params) {
-    const args = [
-        "exec",
-        "--approval-mode",
-        "full-auto",
-        "--full-auto-error-mode",
-        "ask-user",
-        "--quiet",
-    ];
+    const args = ["exec", "--approval-mode", "full-auto", "--full-auto-error-mode", "ask-user", "--quiet"];
     if (params.model) {
         args.push("--model", params.model);
     }
@@ -116,9 +109,7 @@ function buildCodexPrompt(params) {
         `ISSUE TITLE: ${params.issueTitle}\n\n` +
         `ISSUE BODY:\n${params.issueBody}\n\n`;
     if (params.testFailureOutput) {
-        prompt +=
-            "TEST FAILURE OUTPUT (from running the specific test before fix):\n" +
-                `${params.testFailureOutput}\n\n`;
+        prompt += "TEST FAILURE OUTPUT (from running the specific test before fix):\n" + `${params.testFailureOutput}\n\n`;
     }
     prompt +=
         "YOUR TASK:\n" +
@@ -152,9 +143,7 @@ async function run() {
         if (!issueNumber)
             throw new Error("No issue number found in the event payload.");
         const labels = Array.isArray(issue?.labels)
-            ? issue.labels
-                .map((l) => (typeof l === "string" ? l : l?.name))
-                .filter((n) => typeof n === "string")
+            ? issue.labels.map((l) => (typeof l === "string" ? l : l?.name)).filter((n) => typeof n === "string")
             : [];
         if (requiredLabel && !labels.includes(requiredLabel)) {
             core.info(`Issue #${issueNumber} does not have label '${requiredLabel}'. Skipping.`);
