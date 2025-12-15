@@ -43,6 +43,10 @@ inputs:
     description: "Working directory for running test commands and Aider (defaults to repo root)"
     required: false
     default: ""
+  retry-max:
+    description: "Maximum number of retries when tests fail after Aider fix (default 3)"
+    required: false
+    default: "3"
 
 outputs:
   pr-url:

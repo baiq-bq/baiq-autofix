@@ -16,8 +16,9 @@ A GitHub Action that automatically fixes bugs using [Aider](https://github.com/p
 4. **Runs the specific test FIRST** to capture failure output — this gives the AI model the actual test errors.
 5. **Aider analyzes the entire codebase** and makes the necessary fixes directly.
 6. **Runs the full test suite** to check for regressions.
-7. If all tests pass, the action opens a PR and comments on the issue.
-8. If tests fail, the action comments on the issue with details.
+7. **If tests fail, retries** with failure info added to the prompt (up to `retry-max` attempts).
+8. If all tests pass, the action opens a PR and comments on the issue.
+9. If tests fail after all retries, the action comments on the issue with details.
 
 ## Inputs
 
@@ -33,6 +34,7 @@ A GitHub Action that automatically fixes bugs using [Aider](https://github.com/p
 | `test-command-suite` | ❌ | (empty) | Fallback command for full test suite (overridden by issue field) |
 | `aider-version` | ❌ | (latest) | Version of `aider-chat` to install |
 | `working-directory` | ❌ | (repo root) | Working directory for test commands and Aider |
+| `retry-max` | ❌ | `3` | Maximum retries when tests fail after Aider fix |
 
 > ⚠️ At least one of `openai-api-key` or `anthropic-api-key` must be provided.
 
