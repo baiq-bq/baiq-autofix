@@ -59,11 +59,12 @@ function exec(cmd, opts) {
         return { stdout, stderr: "", exitCode: 0 };
     }
     catch (err) {
-        const stdout = err?.stdout?.toString?.() ?? "";
-        const stderr = err?.stderr?.toString?.() ?? err?.message ?? "";
+        const e = err;
+        const stdout = e?.stdout?.toString?.() ?? "";
+        const stderr = e?.stderr?.toString?.() ?? e?.message ?? "";
         if (!opts?.silent)
             core.info(cmd);
-        return { stdout, stderr, exitCode: err?.status ?? 1 };
+        return { stdout, stderr, exitCode: e?.status ?? 1 };
     }
 }
 function installCodexCli(version) {
