@@ -1,5 +1,5 @@
 name: Bug report (autofix-ready)
-description: Bug report including user story + repro + test info
+description: Bug report including user story + test case + bug description
 labels:
   - bug
 body:
@@ -7,8 +7,8 @@ body:
     id: user_story
     attributes:
       label: User story issue (reference)
-      description: Link to the user story issue/PR related to this bug
-      placeholder: https://github.com/<org>/<repo>/issues/123
+      description: Reference to the user story issue (use #123 format or full URL)
+      placeholder: "#123"
     validations:
       required: true
 
@@ -16,8 +16,21 @@ body:
     id: test_case
     attributes:
       label: Test case issue (reference)
-      description: Link to the issue that describes the manual test case (steps + expected vs actual)
-      placeholder: https://github.com/<org>/<repo>/issues/456
+      description: Reference to the test case that failed (use #123 format or full URL)
+      placeholder: "#456"
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug_description
+    attributes:
+      label: Bug description
+      description: Explain the bug - what is the actual result vs expected result from the test case?
+      placeholder: |
+        Expected: <what should happen according to the test case>
+        Actual: <what actually happens - the bug>
+
+        Additional context: <any extra information that helps understand the bug>
     validations:
       required: true
 
@@ -28,10 +41,10 @@ body:
       description: Include command, test path/name, and failure output
       placeholder: |
         Command:
-        npm test
+        npm run e2e:verification -- --grep "TC-1"
 
         Test file/name:
-        path/to/test.spec.ts - "should ..."
+        e2e/verification.spec.ts - "TC-1: ..."
 
         Failure output:
         <paste output>

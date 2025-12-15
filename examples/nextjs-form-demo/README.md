@@ -166,209 +166,275 @@ So that I can reserve a seat and optionally request invoice details.
 
 ### Step 2: Create test case issues
 
-Create **4 test case issues**, one for each bug. These describe the manual test steps, expected result, and which E2E test verifies them. Each test case references the user story.
+A **test case (TC)** is a detailed step-by-step procedure that QA or E2E must follow to verify a user story requirement. It describes:
+- **User story reference** (which requirement is being tested)
+- **Preconditions** (setup needed before the test)
+- **Steps** (actions to perform)
+- **Expected result** (what SHOULD happen if the feature works correctly)
+- **E2E test** (automated test that implements this TC)
+
+Create **4 test case issues**:
 
 ---
 
-#### TC-1: Date range validation
+#### TC-1: Validate date range (endDate >= startDate)
 
-**Title:** `TC-1: Date range validation`
+**Title:** `TC-1: Validate date range (endDate >= startDate)`
 
 **Body:**
 
-> **User story:** References US-1 (link to your user story issue)
->
-> **Steps:**
-> 1. Open the form at `http://localhost:3000`.
-> 2. Fill in required fields (full name, email).
-> 3. Set `Start date` to `2026-06-10`.
-> 4. Set `End date` to `2026-06-09`.
-> 5. Submit.
->
-> **Expected:**
-> - The form shows a validation error on `endDate`: "End date must be on or after start date."
-> - No success confirmation is shown.
->
-> **E2E test:** `npm run e2e:verification -- --grep "TC-1"`
+```markdown
+## User Story Reference
+US-1: Conference registration form
+
+## Preconditions
+- Application is running at http://localhost:3000
+- Form is accessible
+
+## Steps
+1. Navigate to the registration form
+2. Fill in "Full name" with "Test User"
+3. Fill in "Email" with "test@example.com"
+4. Set "Start date" to "2026-06-10"
+5. Set "End date" to "2026-06-09" (before start date)
+6. Click "Submit registration"
+
+## Expected Result
+- Form submission is rejected
+- Validation error appears on the "End date" field: "End date must be on or after start date"
+- No success message is shown
+
+## E2E Test
+`npm run e2e:verification -- --grep "TC-1"`
+```
 
 ---
 
-#### TC-2: Invoice required fields
+#### TC-2: Require all billing fields when invoice is needed
 
-**Title:** `TC-2: Invoice required fields`
+**Title:** `TC-2: Require all billing fields when invoice is needed`
 
 **Body:**
 
-> **User story:** References US-1 (link to your user story issue)
->
-> **Steps:**
-> 1. Open the form.
-> 2. Fill in required fields (full name, email, dates).
-> 3. Check `Needs invoice`.
-> 4. Leave all billing fields empty.
-> 5. Submit.
->
-> **Expected:**
-> - Validation errors for: `billingAddress1`, `billingCity`, `billingPostalCode`, `billingCountryCode`.
->
-> **E2E test:** `npm run e2e:verification -- --grep "TC-2"`
+```markdown
+## User Story Reference
+US-1: Conference registration form
+
+## Preconditions
+- Application is running at http://localhost:3000
+- Form is accessible
+
+## Steps
+1. Navigate to the registration form
+2. Fill in "Full name" with "Test User"
+3. Fill in "Email" with "test@example.com"
+4. Set valid "Start date" and "End date"
+5. Check "Needs invoice" checkbox
+6. Leave all billing fields empty (billingAddress1, billingCity, billingPostalCode, billingCountryCode)
+7. Click "Submit registration"
+
+## Expected Result
+- Form submission is rejected
+- Validation errors appear for ALL billing fields:
+  - billingAddress1: required
+  - billingCity: required
+  - billingPostalCode: required
+  - billingCountryCode: required
+
+## E2E Test
+`npm run e2e:verification -- --grep "TC-2"`
+```
 
 ---
 
-#### TC-3: EU VAT requirement for business ticket
+#### TC-3: Require VAT number for EU business tickets
 
-**Title:** `TC-3: EU VAT requirement for business ticket`
+**Title:** `TC-3: Require VAT number for EU business tickets`
 
 **Body:**
 
-> **User story:** References US-1 (link to your user story issue)
->
-> **Steps:**
-> 1. Open the form.
-> 2. Fill in required fields (full name, email, dates).
-> 3. Select `Ticket type = Business`.
-> 4. Fill in `Company name`.
-> 5. Set `Country code` to `ES` (an EU country).
-> 6. Leave `VAT number` empty.
-> 7. Submit.
->
-> **Expected:**
-> - Validation error: "VAT number is required for EU business registrations."
->
-> **E2E test:** `npm run e2e:verification -- --grep "TC-3"`
+```markdown
+## User Story Reference
+US-1: Conference registration form
+
+## Preconditions
+- Application is running at http://localhost:3000
+- Form is accessible
+
+## Steps
+1. Navigate to the registration form
+2. Fill in "Full name" with "Test User"
+3. Fill in "Email" with "test@example.com"
+4. Set valid "Start date" and "End date"
+5. Select "Ticket type" = "Business"
+6. Fill in "Company name" with "Test Company"
+7. Set "Country code" to "ES" (an EU country)
+8. Leave "VAT number" empty
+9. Click "Submit registration"
+
+## Expected Result
+- Form submission is rejected
+- Validation error appears on "VAT number" field: "VAT number is required for EU business registrations"
+
+## E2E Test
+`npm run e2e:verification -- --grep "TC-3"`
+```
 
 ---
 
-#### TC-4: Discount code price calculation
+#### TC-4: Apply SAVE10 discount code correctly
 
-**Title:** `TC-4: Discount code price calculation`
+**Title:** `TC-4: Apply SAVE10 discount code correctly`
 
 **Body:**
 
-> **User story:** References US-1 (link to your user story issue)
->
-> **Steps:**
-> 1. Open the form.
-> 2. Fill in required fields (full name, email, dates).
-> 3. Select `Ticket type = Standard` (base price: 19900 cents).
-> 4. Enter discount code `SAVE10`.
-> 5. Submit.
->
-> **Expected:**
-> - Final price is 10% lower: `17910` cents.
->
-> **E2E test:** `npm run e2e:verification -- --grep "TC-4"`
+```markdown
+## User Story Reference
+US-1: Conference registration form
+
+## Preconditions
+- Application is running at http://localhost:3000
+- Form is accessible
+- Standard ticket base price is 19900 cents
+
+## Steps
+1. Navigate to the registration form
+2. Fill in "Full name" with "Test User"
+3. Fill in "Email" with "test@example.com"
+4. Set valid "Start date" and "End date"
+5. Select "Ticket type" = "Standard"
+6. Enter "Discount code" = "SAVE10"
+7. Click "Submit registration"
+
+## Expected Result
+- Form submission succeeds
+- Final price displayed is 17910 cents (10% discount applied: 19900 * 0.9 = 17910)
+
+## E2E Test
+`npm run e2e:verification -- --grep "TC-4"`
+```
 
 ---
 
 ### Step 3: Create bug report issues
 
-Create **4 bug report issues** using the repo's **Bug report (autofix-ready)** template. Each bug report references:
-- The **user story** (requirement context)
-- The **test case** (steps and expected behavior)
-- The **actual result** (the buggy behavior observed)
+A **bug report** is created when executing a test case produces a **failure** (actual result ≠ expected result). It documents:
+- **User story reference** (requirement context)
+- **Test case reference** (which TC failed)
+- **Bug description** (expected vs actual result explanation)
+- **E2E failure output** (automated test error, if exists)
+
+Create **4 bug report issues** using the repo's **Bug report (autofix-ready)** template.
 
 **Important:** After creating each bug report, add the `autofix` label to trigger the action.
 
 ---
 
-#### Bug-1: End date validation accepts invalid ranges
+#### Bug-1: Date range validation error shows on wrong field
+
+**Title:** `Date range validation error shows on wrong field`
 
 Use the bug report template. Fill in:
 
-- **User story issue (reference):** `https://github.com/<org>/<repo>/issues/<US-1-number>`
-- **Test case issue (reference):** `https://github.com/<org>/<repo>/issues/<TC-1-number>`
+- **User story issue (reference):** `#<US-1-number>`
+- **Test case issue (reference):** `#<TC-1-number>`
+- **Bug description:**
+
+```
+Expected: Validation error should appear on the "End date" field
+Actual: Error appears on "Start date" field instead of "End date"
+
+The date range validation correctly detects invalid ranges, but shows the error on the wrong field.
+```
+
 - **Automated test that fails (if exists):**
 
 ```
-Command: npm run e2e:verification --prefix examples/nextjs-form-demo -- --grep "TC-1"
-
+Command: npm run e2e:verification -- --grep "TC-1"
 Test: e2e/verification.spec.ts - "TC-1: invalid date range shows endDate error"
-
-Failure output:
-Error: expect(locator).toBeVisible()
-Locator: getByTestId('error-endDate')
-Expected: visible
-
-Actual result: The form accepts the invalid date range and shows success instead of a validation error.
+Failure: expect(getByTestId('error-endDate')).toBeVisible() - received hidden
 ```
-
-- **Title:** `Demo form accepts end date before start date`
 
 ---
 
-#### Bug-2: Billing postal code is not required when invoice is enabled
+#### Bug-2: billingPostalCode not validated when invoice is needed
+
+**Title:** `billingPostalCode not validated when invoice is needed`
 
 Use the bug report template. Fill in:
 
-- **User story issue (reference):** `https://github.com/<org>/<repo>/issues/<US-1-number>`
-- **Test case issue (reference):** `https://github.com/<org>/<repo>/issues/<TC-2-number>`
+- **User story issue (reference):** `#<US-1-number>`
+- **Test case issue (reference):** `#<TC-2-number>`
+- **Bug description:**
+
+```
+Expected: billingPostalCode should be required when "Needs invoice" is checked
+Actual: No validation error for billingPostalCode; form accepts empty value
+
+The validation for billing fields is missing the postal code check.
+```
+
 - **Automated test that fails (if exists):**
 
 ```
-Command: npm run e2e:verification --prefix examples/nextjs-form-demo -- --grep "TC-2"
-
-Test: e2e/verification.spec.ts - "TC-2: when needsInvoice=true, billingPostalCode is required"
-
-Failure output:
-Error: expect(locator).toBeVisible()
-Locator: getByTestId('error-billingPostalCode')
-Expected: visible
-
-Actual result: billingPostalCode is not validated; the form accepts submission without it.
+Command: npm run e2e:verification -- --grep "TC-2"
+Test: e2e/verification.spec.ts - "TC-2: billingPostalCode is required when needsInvoice"
+Failure: expect(getByTestId('error-billingPostalCode')).toBeVisible() - received hidden
 ```
-
-- **Title:** `Demo form does not validate billing postal code`
 
 ---
 
-#### Bug-3: EU business VAT requirement not enforced
+#### Bug-3: VAT validation logic is inverted for EU countries
+
+**Title:** `VAT validation logic is inverted for EU countries`
 
 Use the bug report template. Fill in:
 
-- **User story issue (reference):** `https://github.com/<org>/<repo>/issues/<US-1-number>`
-- **Test case issue (reference):** `https://github.com/<org>/<repo>/issues/<TC-3-number>`
+- **User story issue (reference):** `#<US-1-number>`
+- **Test case issue (reference):** `#<TC-3-number>`
+- **Bug description:**
+
+```
+Expected: VAT number required for EU business tickets (e.g., countryCode = ES)
+Actual: VAT NOT required for EU countries, but required for non-EU (logic is inverted)
+
+The condition checking for EU countries is negated incorrectly.
+```
+
 - **Automated test that fails (if exists):**
 
 ```
-Command: npm run e2e:verification --prefix examples/nextjs-form-demo -- --grep "TC-3"
-
+Command: npm run e2e:verification -- --grep "TC-3"
 Test: e2e/verification.spec.ts - "TC-3: business + EU country requires VAT"
-
-Failure output:
-Error: expect(locator).toBeVisible()
-Locator: getByTestId('error-vatNumber')
-Expected: visible
-
-Actual result: No VAT validation error; the form accepts submission without VAT for EU business tickets.
+Failure: expect(getByTestId('error-vatNumber')).toBeVisible() - received hidden
 ```
-
-- **Title:** `Business ticket should require VAT for EU countries`
 
 ---
 
-#### Bug-4: Discount code SAVE10 price calculation is wrong
+#### Bug-4: SAVE10 discount adds 10% instead of subtracting
+
+**Title:** `SAVE10 discount adds 10% instead of subtracting`
 
 Use the bug report template. Fill in:
 
-- **User story issue (reference):** `https://github.com/<org>/<repo>/issues/<US-1-number>`
-- **Test case issue (reference):** `https://github.com/<org>/<repo>/issues/<TC-4-number>`
+- **User story issue (reference):** `#<US-1-number>`
+- **Test case issue (reference):** `#<TC-4-number>`
+- **Bug description:**
+
+```
+Expected: SAVE10 discount should subtract 10% (final price = 19900 * 0.9 = 17910 cents)
+Actual: Final price is 21890 cents (19900 * 1.1) - adds 10% instead of subtracting
+
+The discount calculation multiplies by 1.1 instead of 0.9.
+```
+
 - **Automated test that fails (if exists):**
 
 ```
-Command: npm run e2e:verification --prefix examples/nextjs-form-demo -- --grep "TC-4"
-
-Test: e2e/verification.spec.ts - "TC-4: SAVE10 applies 10% discount to standard ticket"
-
-Failure output:
-Error: expect(locator).toContainText('17910')
-Locator: getByTestId('result-final-price')
-Received: "Final price: 21890 cents"
-
-Actual result: Final price is 21890 cents (10% higher instead of 10% lower).
+Command: npm run e2e:verification -- --grep "TC-4"
+Test: e2e/verification.spec.ts - "TC-4: SAVE10 applies 10% discount"
+Failure: expect(getByTestId('result-final-price')).toContainText('17910') - received "21890"
 ```
-
-- **Title:** `Discount code SAVE10 calculates wrong final price`
 
 ---
 

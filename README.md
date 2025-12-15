@@ -81,7 +81,7 @@ Create `.github/ISSUE_TEMPLATE/bug_report.yml`:
 
 ```yml
 name: Bug report (autofix-ready)
-description: Bug report including user story + repro + test info
+description: Bug report including user story + test case + bug description
 labels:
   - bug
 body:
@@ -89,8 +89,8 @@ body:
     id: user_story
     attributes:
       label: User story issue (reference)
-      description: Link to the user story issue/PR related to this bug
-      placeholder: https://github.com/<org>/<repo>/issues/123
+      description: Reference to the user story issue (use #123 format or full URL)
+      placeholder: "#123"
     validations:
       required: true
 
@@ -98,8 +98,19 @@ body:
     id: test_case
     attributes:
       label: Test case issue (reference)
-      description: Link to the issue that describes the manual test case (steps + expected vs actual)
-      placeholder: https://github.com/<org>/<repo>/issues/456
+      description: Reference to the test case that failed (use #123 format or full URL)
+      placeholder: "#456"
+    validations:
+      required: true
+
+  - type: textarea
+    id: bug_description
+    attributes:
+      label: Bug description
+      description: Explain the bug - what is the actual result vs expected result?
+      placeholder: |
+        Expected: <what should happen according to the test case>
+        Actual: <what actually happens - the bug>
     validations:
       required: true
 
@@ -107,12 +118,11 @@ body:
     id: automated_test
     attributes:
       label: Automated test that fails (if exists)
-      description: |
-        Include command, test path/name, and failure output.
-        Example:
-        Command: npm run e2e:verification
-        Test: e2e/verification.spec.ts - "TC-3: business + EU country requires VAT"
-        Output: Expected error-vatNumber to be visible
+      description: Include command, test path/name, and failure output
+      placeholder: |
+        Command: npm run e2e:verification -- --grep "TC-1"
+        Test: e2e/verification.spec.ts - "TC-1: ..."
+        Failure: <paste output>
     validations:
       required: false
 

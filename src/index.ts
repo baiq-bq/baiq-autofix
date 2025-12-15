@@ -100,8 +100,13 @@ async function askForFilesToRead(params: {
   fileList: string;
 }): Promise<string[]> {
   const prompt =
-    "You are an assistant that helps fix a repository based on a GitHub issue. " +
-    "Given the issue and repository file list, choose up to 8 files that are most relevant to inspect. " +
+    "You are an assistant that helps fix bugs in a repository based on a GitHub bug report issue. " +
+    "The bug report contains: " +
+    "(1) a reference to a USER STORY issue describing the requirement, " +
+    "(2) a reference to a TEST CASE issue describing preconditions, steps, and expected result, " +
+    "(3) a BUG DESCRIPTION explaining expected vs actual behavior, " +
+    "(4) optionally, automated test failure output. " +
+    "Given the issue and repository file list, choose up to 8 files that are most relevant to inspect for fixing the bug. " +
     "Return ONLY valid JSON of the form: {\"files\":[\"path1\",\"path2\"]}.";
 
   const text = await generateText({
