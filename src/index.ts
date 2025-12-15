@@ -1,19 +1,10 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import OpenAI from "openai";
-import { execSync } from "child_process";
+import { execSync, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
-import {
-  countLines,
-  extractDiffOnly as extractDiffOnlyFromModel,
-  extractIssueFormFieldValue,
-  parseGitHubIssueRef,
-  safeRepoRelativePath,
-  truncate,
-  validateDiff,
-} from "./lib";
+import { extractIssueFormFieldValue, parseGitHubIssueRef, truncate } from "./lib";
 
 type ExecResult = {
   stdout: string;
@@ -25,12 +16,12 @@ function shellEscape(arg: string): string {
   return `'${arg.replace(/'/g, "'\\''")}'`;
 }
 
-function exec(cmd: string, opts?: { silent?: boolean }): ExecResult {
+function exec(cmd: string, opts?: { silent?: boolean; env?: NodeJS.ProcessEnv }): ExecResult {
   try {
     const stdout = execSync(cmd, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
+      env: opts?.env ?? process.env,
     });
     if (!opts?.silent) core.info(cmd);
     return { stdout, stderr: "", exitCode: 0 };
@@ -42,143 +33,87 @@ function exec(cmd: string, opts?: { silent?: boolean }): ExecResult {
   }
 }
 
-async function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function installCodexCli(version: string): void {
+  core.info(`Installing Codex CLI${version ? ` (version: ${version})` : ""}...`);
+  const pkg = version ? `@openai/codex@${version}` : "@openai/codex";
+  const res = exec(`npm install -g ${pkg}`, { silent: true });
+  if (res.exitCode !== 0) {
+    throw new Error(`Failed to install Codex CLI: ${res.stderr || res.stdout}`);
+  }
+  core.info("Codex CLI installed successfully.");
 }
 
-async function generateText(params: {
-  client: OpenAI;
-  model: string;
-  instructions: string;
-  input: string;
-  maxRetries?: number;
-}): Promise<string> {
-  const maxRetries = params.maxRetries ?? 3;
-  let lastError: Error | undefined;
+function runCodexExec(params: {
+  prompt: string;
+  workingDirectory: string;
+  openaiApiKey: string;
+  model?: string;
+}): ExecResult {
+  const args = [
+    "exec",
+    "--approval-mode",
+    "full-auto",
+    "--full-auto-error-mode",
+    "ask-user",
+    "--quiet",
+  ];
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const res = await params.client.responses.create({
-        model: params.model,
-        instructions: params.instructions,
-        input: params.input,
-      });
-
-      const text = res.output_text;
-      if (typeof text === "string" && text.trim()) return text;
-
-      throw new Error("OpenAI Responses API returned no output_text.");
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      const isRetryable =
-        lastError.message.includes("rate_limit") ||
-        lastError.message.includes("timeout") ||
-        lastError.message.includes("503") ||
-        lastError.message.includes("502") ||
-        lastError.message.includes("500");
-
-      if (!isRetryable || attempt === maxRetries - 1) {
-        throw lastError;
-      }
-
-      const delayMs = Math.min(1000 * Math.pow(2, attempt), 10000);
-      core.warning(
-        `OpenAI request failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delayMs}ms: ${lastError.message}`
-      );
-      await sleep(delayMs);
-    }
+  if (params.model) {
+    args.push("--model", params.model);
   }
 
-  throw lastError ?? new Error("generateText failed with no error captured");
-}
+  args.push(params.prompt);
 
-async function askForFilesToRead(params: {
-  client: OpenAI;
-  model: string;
-  issueTitle: string;
-  issueBody: string;
-  fileList: string;
-  testFailureOutput?: string;
-}): Promise<string[]> {
-  const prompt =
-    "You are an assistant that helps fix bugs in a repository based on a GitHub bug report issue. " +
-    "The bug report contains: " +
-    "(1) a reference to a USER STORY issue describing the requirement, " +
-    "(2) a reference to a TEST CASE issue describing preconditions, steps, and expected result, " +
-    "(3) a BUG DESCRIPTION explaining expected vs actual behavior. " +
-    "If automated tests exist, the TEST FAILURE OUTPUT is also provided showing the actual test errors. " +
-    "Given the issue and repository file list, choose up to 8 files that are most relevant to inspect for fixing the bug. " +
-    'Return ONLY valid JSON of the form: {"files":["path1","path2"]}.';
+  core.info("Running Codex CLI...");
+  core.info(`codex ${args.slice(0, -1).join(" ")} "<prompt>"`);
 
-  let input =
-    `Issue title:\n${params.issueTitle}\n\n` +
-    `Issue body:\n${params.issueBody}\n\n` +
-    `Repository file list (git ls-files):\n${params.fileList}`;
-
-  if (params.testFailureOutput) {
-    input += `\n\nTEST FAILURE OUTPUT:\n${params.testFailureOutput}`;
-  }
-
-  const text = await generateText({
-    client: params.client,
-    model: params.model,
-    instructions: prompt,
-    input,
-  });
-  let parsed: any;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error(`Failed to parse file selection JSON. Model output:\n${text}`);
-    parsed = JSON.parse(match[0]);
-  }
-
-  const files = Array.isArray(parsed?.files) ? parsed.files : [];
-  return files
-    .filter((f: unknown): f is string => typeof f === "string")
-    .map((f: string) => f.trim())
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-async function askForUnifiedDiff(params: {
-  client: OpenAI;
-  model: string;
-  issueTitle: string;
-  issueBody: string;
-  fileContext: string;
-  testFailureOutput?: string;
-}): Promise<string> {
-  const system =
-    "You are an expert software engineer fixing a bug based on a GitHub bug report. " +
-    "The bug report structure is: " +
-    "(1) USER STORY: describes the requirement/feature being tested, " +
-    "(2) TEST CASE: describes preconditions, step-by-step actions, and expected result, " +
-    "(3) BUG DESCRIPTION: explains expected vs actual behavior (the bug). " +
-    "If automated tests exist, the TEST FAILURE OUTPUT shows the actual test errors that need to be fixed. " +
-    "Your task: generate a minimal fix so the actual behavior matches the expected behavior from the test case. " +
-    "Return ONLY a unified diff that can be applied with `git apply`. " +
-    "Do not include explanations, markdown fences, or extra text. " +
-    "Do not modify lockfiles (package-lock.json, pnpm-lock.yaml, yarn.lock) or .github/workflows/*.";
-
-  let input =
-    `Issue title:\n${params.issueTitle}\n\n` +
-    `Issue body:\n${params.issueBody}\n\n` +
-    `Repository context (selected file contents):\n${params.fileContext}`;
-
-  if (params.testFailureOutput) {
-    input += `\n\nTEST FAILURE OUTPUT:\n${params.testFailureOutput}`;
-  }
-
-  const text = await generateText({
-    client: params.client,
-    model: params.model,
-    instructions: system,
-    input,
+  const result = spawnSync("codex", args, {
+    cwd: params.workingDirectory,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      OPENAI_API_KEY: params.openaiApiKey,
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 600_000, // 10 minute timeout
   });
 
-  return text.trim();
+  return {
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    exitCode: result.status ?? 1,
+  };
+}
+
+function buildCodexPrompt(params: {
+  issueTitle: string;
+  issueBody: string;
+  testFailureOutput?: string;
+}): string {
+  let prompt =
+    "You are fixing a bug in this codebase based on a GitHub bug report issue.\n\n" +
+    "The bug report structure is:\n" +
+    "- USER STORY: describes the requirement/feature being tested\n" +
+    "- TEST CASE: describes preconditions, step-by-step actions, and expected result\n" +
+    "- BUG DESCRIPTION: explains expected vs actual behavior (the bug)\n\n" +
+    `ISSUE TITLE: ${params.issueTitle}\n\n` +
+    `ISSUE BODY:\n${params.issueBody}\n\n`;
+
+  if (params.testFailureOutput) {
+    prompt +=
+      "TEST FAILURE OUTPUT (from running the specific test before fix):\n" +
+      `${params.testFailureOutput}\n\n`;
+  }
+
+  prompt +=
+    "YOUR TASK:\n" +
+    "1. Analyze the bug report and test failure output\n" +
+    "2. Find the root cause of the bug in the codebase\n" +
+    "3. Make the minimal fix needed so the actual behavior matches the expected behavior\n" +
+    "4. Do NOT modify lockfiles (package-lock.json, pnpm-lock.yaml, yarn.lock) or .github/workflows/*\n" +
+    "5. Do NOT add unnecessary changes - keep the fix focused and minimal";
+
+  return prompt;
 }
 
 async function run(): Promise<void> {
@@ -189,7 +124,7 @@ async function run(): Promise<void> {
   const baseBranchInput = core.getInput("base-branch") || "";
   const testCommandSpecificFallback = core.getInput("test-command-specific") || "";
   const testCommandSuiteFallback = core.getInput("test-command-suite") || "";
-  const maxDiffLines = Number(core.getInput("max-diff-lines") || "800");
+  const codexVersion = core.getInput("codex-version") || "";
 
   let owner: string | undefined;
   let repo: string | undefined;
@@ -197,10 +132,6 @@ async function run(): Promise<void> {
   let octokit: ReturnType<typeof github.getOctokit> | undefined;
 
   try {
-    if (!Number.isFinite(maxDiffLines) || maxDiffLines <= 0) {
-      throw new Error("Input max-diff-lines must be a positive number");
-    }
-
     if (github.context.eventName !== "issues") {
       core.info(`Event ${github.context.eventName} is not supported. Skipping.`);
       return;
@@ -306,9 +237,6 @@ async function run(): Promise<void> {
 
     const repoRoot = process.cwd();
 
-    const fileListRaw = exec("git ls-files", { silent: true }).stdout;
-    const fileList = truncate(fileListRaw, 120_000);
-
     // Run SPECIFIC test BEFORE generating the fix to capture failure output for the prompt
     let testFailureOutput: string | undefined;
     if (testCommandSpecific.trim()) {
@@ -324,63 +252,10 @@ async function run(): Promise<void> {
       core.info("No specific test command provided; skipping pre-fix test.");
     }
 
-    const client = new OpenAI({ apiKey: openaiApiKey });
+    // Install Codex CLI
+    installCodexCli(codexVersion);
 
-    core.info("Selecting files to read...");
-    const filesToRead = await askForFilesToRead({
-      client,
-      model,
-      issueTitle,
-      issueBody: issueBodyForPrompt,
-      fileList,
-      testFailureOutput,
-    });
-
-    if (filesToRead.length === 0) {
-      throw new Error("Model did not select any files to read.");
-    }
-
-    core.info(`Selected files: ${filesToRead.join(", ")}`);
-
-    const selectedContexts: string[] = [];
-    for (const rel of filesToRead) {
-      const resolved = safeRepoRelativePath(repoRoot, rel);
-      if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) continue;
-
-      const raw = fs.readFileSync(resolved, "utf8");
-      const snippet = truncate(raw, 12_000);
-      selectedContexts.push(`FILE: ${rel}\n-----\n${snippet}\n-----\n`);
-    }
-
-    const fileContext = truncate(selectedContexts.join("\n"), 220_000);
-
-    core.info("Generating diff...");
-    const modelOutput = await askForUnifiedDiff({
-      client,
-      model,
-      issueTitle,
-      issueBody: issueBodyForPrompt,
-      fileContext,
-      testFailureOutput,
-    });
-
-    core.info("=== RAW MODEL OUTPUT (first 2000 chars) ===");
-    core.info(modelOutput.slice(0, 2000));
-    core.info("=== END RAW MODEL OUTPUT ===");
-
-    const diff = extractDiffOnlyFromModel(modelOutput);
-
-    core.info("=== EXTRACTED DIFF (first 2000 chars) ===");
-    core.info(diff.slice(0, 2000));
-    core.info("=== END EXTRACTED DIFF ===");
-
-    validateDiff(diff);
-
-    const diffLines = countLines(diff);
-    if (diffLines > maxDiffLines) {
-      throw new Error(`Generated diff is too large: ${diffLines} lines (max ${maxDiffLines}).`);
-    }
-
+    // Checkout base branch and create working branch BEFORE running Codex
     core.info(`Checking out base branch ${baseBranch} and creating working branch...`);
     exec(`git fetch origin ${shellEscape(baseBranch)}`);
     exec(`git checkout ${shellEscape(baseBranch)}`);
@@ -389,38 +264,58 @@ async function run(): Promise<void> {
     const branchName = `qa/issue-${issueNumber}-${Date.now()}`;
     exec(`git checkout -b ${shellEscape(branchName)}`);
 
-    const tmpFile = path.join(repoRoot, `.qa-action-${issueNumber}.diff`);
-    fs.writeFileSync(tmpFile, diff, "utf8");
+    // Build the prompt for Codex
+    const prompt = buildCodexPrompt({
+      issueTitle,
+      issueBody: issueBodyForPrompt,
+      testFailureOutput,
+    });
 
-    const applyRes = exec(`git apply --whitespace=fix ${tmpFile}`, { silent: true });
-    fs.unlinkSync(tmpFile);
+    // Run Codex CLI - it will modify files directly
+    const codexResult = runCodexExec({
+      prompt,
+      workingDirectory: repoRoot,
+      openaiApiKey,
+      model: model || undefined,
+    });
 
-    if (applyRes.exitCode !== 0) {
+    core.info("=== CODEX OUTPUT ===");
+    core.info(truncate(codexResult.stdout, 4000));
+    if (codexResult.stderr) {
+      core.info("=== CODEX STDERR ===");
+      core.info(truncate(codexResult.stderr, 2000));
+    }
+    core.info("=== END CODEX OUTPUT ===");
+
+    if (codexResult.exitCode !== 0) {
       await octokit.rest.issues.createComment({
         owner,
         repo,
         issue_number: issueNumber,
         body:
-          "I generated a patch but failed to apply it with `git apply`.\n\n" +
-          "Details:\n" +
-          `\n\n\`\`\`\n${truncate(applyRes.stderr || applyRes.stdout, 6000)}\n\`\`\`\n`,
+          "Codex CLI failed to generate a fix.\n\n" +
+          "Output:\n" +
+          `\n\n\`\`\`\n${truncate((codexResult.stdout + "\n" + codexResult.stderr).trim(), 6000)}\n\`\`\`\n`,
       });
-      core.setFailed("Failed to apply generated patch.");
+      core.setFailed("Codex CLI failed to generate a fix.");
       return;
     }
 
+    // Check if Codex made any changes
     const status = exec("git status --porcelain", { silent: true }).stdout.trim();
     if (!status) {
       await octokit.rest.issues.createComment({
         owner,
         repo,
         issue_number: issueNumber,
-        body: "I attempted to generate a fix, but it resulted in no file changes. No PR was created.",
+        body: "Codex analyzed the issue but made no file changes. No PR was created.",
       });
       return;
     }
 
-    // Run FULL TEST SUITE after applying fix to check for regressions
+    core.info(`Files changed:\n${status}`);
+
+    // Run FULL TEST SUITE after Codex fix to check for regressions
     if (testCommandSuite.trim()) {
       core.info(`Running full test suite for regression check: ${testCommandSuite}`);
       const testRes = exec(testCommandSuite, { silent: true });
@@ -430,7 +325,7 @@ async function run(): Promise<void> {
           repo,
           issue_number: issueNumber,
           body:
-            "I generated a patch and applied it locally, but the full test suite failed (regression detected). PR not opened.\n\n" +
+            "Codex generated a fix, but the full test suite failed (regression detected). PR not opened.\n\n" +
             "Test output:\n" +
             `\n\n\`\`\`\n${truncate((testRes.stdout + "\n" + testRes.stderr).trim(), 8000)}\n\`\`\`\n`,
         });
@@ -459,7 +354,7 @@ async function run(): Promise<void> {
       title: `Fix: ${issueTitle}`.slice(0, 240),
       head: branchName,
       base: baseBranch,
-      body: `Automated fix for issue #${issueNumber}.\n\nCloses #${issueNumber}.`,
+      body: `Automated fix for issue #${issueNumber} using Codex CLI.\n\nCloses #${issueNumber}.`,
     });
 
     const prUrl = pr.data.html_url;
