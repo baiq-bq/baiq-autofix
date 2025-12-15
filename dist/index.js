@@ -116,7 +116,7 @@ async function askForFilesToRead(params) {
         "(3) a BUG DESCRIPTION explaining expected vs actual behavior. " +
         "If automated tests exist, the TEST FAILURE OUTPUT is also provided showing the actual test errors. " +
         "Given the issue and repository file list, choose up to 8 files that are most relevant to inspect for fixing the bug. " +
-        "Return ONLY valid JSON of the form: {\"files\":[\"path1\",\"path2\"]}.";
+        'Return ONLY valid JSON of the form: {"files":["path1","path2"]}.';
     let input = `Issue title:\n${params.issueTitle}\n\n` +
         `Issue body:\n${params.issueBody}\n\n` +
         `Repository file list (git ls-files):\n${params.fileList}`;
@@ -219,10 +219,8 @@ async function run() {
             (0, lib_1.extractIssueFormFieldValue)(issueBody, "Test case issue") ??
             "";
         // Extract test commands from issue body, fallback to action inputs
-        const testCommandSpecific = (0, lib_1.extractIssueFormFieldValue)(issueBody, "Test command (specific test for this bug)") ||
-            testCommandSpecificFallback;
-        const testCommandSuite = (0, lib_1.extractIssueFormFieldValue)(issueBody, "Test command (full suite for regression)") ||
-            testCommandSuiteFallback;
+        const testCommandSpecific = (0, lib_1.extractIssueFormFieldValue)(issueBody, "Test command (specific test for this bug)") || testCommandSpecificFallback;
+        const testCommandSuite = (0, lib_1.extractIssueFormFieldValue)(issueBody, "Test command (full suite for regression)") || testCommandSuiteFallback;
         const userStoryRef = (0, lib_1.parseGitHubIssueRef)({
             input: userStoryRefRaw,
             defaultOwner: owner,
