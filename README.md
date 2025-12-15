@@ -78,11 +78,12 @@ body:
     validations:
       required: true
 
-  - type: textarea
+  - type: input
     id: test_case
     attributes:
-      label: Test case used to discover the bug (manual)
-      description: Steps/data/environment + expected vs actual
+      label: Test case issue (reference)
+      description: Link to the issue that describes the manual test case (steps + expected vs actual)
+      placeholder: https://github.com/<org>/<repo>/issues/456
     validations:
       required: true
 
@@ -104,7 +105,7 @@ body:
           required: false
 ```
 
-When a bug is filed using that form, the collected fields become part of the issue body. The action reads the issue body and uses those sections as prompt context.
+When a bug is filed using that form, the collected fields become part of the issue body. The action reads the issue body, extracts the user story + test case issue references, fetches those issues, and includes their contents in the prompt context.
 
 To trigger this action, add the `autofix` label (or set `required-label` to a different label).
 

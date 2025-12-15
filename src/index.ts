@@ -8,6 +8,8 @@ import * as path from "path";
 import {
   countLines,
   extractDiffOnly as extractDiffOnlyFromModel,
+  extractIssueFormFieldValue,
+  parseGitHubIssueRef,
   safeRepoRelativePath,
   truncate,
   validateDiff,
@@ -202,6 +204,72 @@ async function run(): Promise<void> {
     const issueTitle = issueResponse.data.title ?? "";
     const issueBody = issueResponse.data.body ?? "";
 
+    const userStoryRefRaw =
+      extractIssueFormFieldValue(issueBody, "User story issue (reference)") ??
+      extractIssueFormFieldValue(issueBody, "User story issue") ??
+      "";
+    const testCaseRefRaw =
+      extractIssueFormFieldValue(issueBody, "Test case issue (reference)") ??
+      extractIssueFormFieldValue(issueBody, "Test case issue") ??
+      "";
+
+    const userStoryRef = parseGitHubIssueRef({
+      input: userStoryRefRaw,
+      defaultOwner: owner,
+      defaultRepo: repo,
+    });
+    const testCaseRef = parseGitHubIssueRef({
+      input: testCaseRefRaw,
+      defaultOwner: owner,
+      defaultRepo: repo,
+    });
+
+    const referencedContexts: string[] = [];
+    if (userStoryRef) {
+      try {
+        const refIssue = await octokit.rest.issues.get({
+          owner: userStoryRef.owner,
+          repo: userStoryRef.repo,
+          issue_number: userStoryRef.number,
+        });
+        referencedContexts.push(
+          "REFERENCED USER STORY ISSUE\n" +
+            `URL: ${userStoryRef.url}\n` +
+            `Title: ${refIssue.data.title ?? ""}\n\n` +
+            `Body:\n${refIssue.data.body ?? ""}\n`,
+        );
+      } catch (e) {
+        core.warning(
+          `Failed to fetch referenced user story issue (${userStoryRef.url}). Continuing without it. ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    if (testCaseRef) {
+      try {
+        const refIssue = await octokit.rest.issues.get({
+          owner: testCaseRef.owner,
+          repo: testCaseRef.repo,
+          issue_number: testCaseRef.number,
+        });
+        referencedContexts.push(
+          "REFERENCED TEST CASE ISSUE\n" +
+            `URL: ${testCaseRef.url}\n` +
+            `Title: ${refIssue.data.title ?? ""}\n\n` +
+            `Body:\n${refIssue.data.body ?? ""}\n`,
+        );
+      } catch (e) {
+        core.warning(
+          `Failed to fetch referenced test case issue (${testCaseRef.url}). Continuing without it. ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    const issueBodyForPrompt = truncate(
+      issueBody + (referencedContexts.length ? `\n\n${referencedContexts.join("\n\n")}` : ""),
+      180_000,
+    );
+
     const repoResponse = await octokit.rest.repos.get({ owner, repo });
     const defaultBranch = repoResponse.data.default_branch;
     const baseBranch = baseBranchInput.trim() || defaultBranch;
@@ -218,7 +286,7 @@ async function run(): Promise<void> {
       client,
       model,
       issueTitle,
-      issueBody,
+      issueBody: issueBodyForPrompt,
       fileList,
     });
 
@@ -245,7 +313,7 @@ async function run(): Promise<void> {
       client,
       model,
       issueTitle,
-      issueBody,
+      issueBody: issueBodyForPrompt,
       fileContext,
     });
 

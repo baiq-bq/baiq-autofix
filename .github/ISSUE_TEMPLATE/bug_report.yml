@@ -12,22 +12,12 @@ body:
     validations:
       required: true
 
-  - type: textarea
+  - type: input
     id: test_case
     attributes:
-      label: Test case used to discover the bug (manual)
-      description: Steps/data/environment + expected vs actual
-      placeholder: |
-        Environment:
-        - OS:
-        - Node:
-        
-        Steps:
-        1) ...
-        2) ...
-        
-        Expected:
-        Actual:
+      label: Test case issue (reference)
+      description: Link to the issue that describes the manual test case (steps + expected vs actual)
+      placeholder: https://github.com/<org>/<repo>/issues/456
     validations:
       required: true
 
