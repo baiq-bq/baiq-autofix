@@ -35,6 +35,11 @@ jobs:
         run: npx playwright install chromium --with-deps
         working-directory: examples/nextjs-form-demo
 
+      - name: Setup Python (for Aider)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Run Baiq Autofix
         uses: ./.
         with:

@@ -2,7 +2,7 @@
 
 > Automatic bug fixes, powered by **Baiq**, the IA of BQ
 
-A GitHub Action that automatically fixes bugs using [OpenAI Codex CLI](https://github.com/openai/codex). Codex CLI has full codebase awareness, making it ideal for fixing bugs in large projects.
+A GitHub Action that automatically fixes bugs using [Aider](https://github.com/paul-gauthier/aider). Aider has full codebase awareness via its repository map, making it ideal for fixing bugs in large projects. Supports both OpenAI and Anthropic models.
 
 ## How it works
 
@@ -14,7 +14,7 @@ A GitHub Action that automatically fixes bugs using [OpenAI Codex CLI](https://g
    - **Full test suite command** (for regression check)
 3. It fetches the referenced issues and includes them as context.
 4. **Runs the specific test FIRST** to capture failure output — this gives the AI model the actual test errors.
-5. **Codex CLI analyzes the entire codebase** and makes the necessary fixes directly.
+5. **Aider analyzes the entire codebase** and makes the necessary fixes directly.
 6. **Runs the full test suite** to check for regressions.
 7. If all tests pass, the action opens a PR and comments on the issue.
 8. If tests fail, the action comments on the issue with details.
@@ -24,14 +24,17 @@ A GitHub Action that automatically fixes bugs using [OpenAI Codex CLI](https://g
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `github-token` | ✅ | — | GitHub token (use `secrets.GITHUB_TOKEN`) |
-| `openai-api-key` | ✅ | — | OpenAI API key |
-| `model` | ❌ | `gpt-5.1-codex-max` | Model to use with Codex CLI |
+| `openai-api-key` | ⚠️ | — | OpenAI API key (required if using OpenAI models) |
+| `anthropic-api-key` | ⚠️ | — | Anthropic API key (required if using Claude models) |
+| `model` | ❌ | `gpt-4o` | Model to use with Aider (e.g., `gpt-4o`, `claude-3-5-sonnet-20241022`, `o1-preview`) |
 | `required-label` | ❌ | `autofix` | Only run if the issue has this label |
 | `base-branch` | ❌ | repo default | Base branch for the PR |
 | `test-command-specific` | ❌ | (empty) | Fallback command for specific bug test (overridden by issue field) |
 | `test-command-suite` | ❌ | (empty) | Fallback command for full test suite (overridden by issue field) |
-| `codex-version` | ❌ | (latest) | Version of `@openai/codex` to install |
-| `working-directory` | ❌ | (repo root) | Working directory for test commands and Codex CLI |
+| `aider-version` | ❌ | (latest) | Version of `aider-chat` to install |
+| `working-directory` | ❌ | (repo root) | Working directory for test commands and Aider |
+
+> ⚠️ At least one of `openai-api-key` or `anthropic-api-key` must be provided.
 
 ## Outputs
 
@@ -74,11 +77,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Setup Python (for Aider)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Run Baiq Autofix
         uses: baiq-bq/baiq-autofix@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          # Or use Anthropic:
+          # anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # model: claude-3-5-sonnet-20241022
           # Test commands can be provided here as fallbacks, but issue fields take priority
           # test-command-specific: npm run test:specific
           # test-command-suite: npm test
@@ -154,9 +165,11 @@ body:
           required: false
 ```
 
-### 3. Add the `OPENAI_API_KEY` secret
+### 3. Add the API key secret
 
-Go to **Settings → Secrets and variables → Actions** and add `OPENAI_API_KEY`.
+Go to **Settings → Secrets and variables → Actions** and add:
+- `OPENAI_API_KEY` — if using OpenAI models (gpt-4o, o1-preview, etc.)
+- `ANTHROPIC_API_KEY` — if using Anthropic models (claude-3-5-sonnet, etc.)
 
 ### 4. Create issues and trigger the action
 
@@ -189,13 +202,18 @@ To have the action run E2E tests (e.g., Playwright) before opening a PR:
 - name: Install Playwright browsers
   run: npx playwright install chromium --with-deps
 
+- name: Setup Python (for Aider)
+  uses: actions/setup-python@v5
+  with:
+    python-version: '3.11'
+
 - name: Run Baiq Autofix
   uses: baiq-bq/baiq-autofix@v1
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
     openai-api-key: ${{ secrets.OPENAI_API_KEY }}
     working-directory: my-app  # if tests are in a subdirectory
-    test-command: npm run e2e
+    test-command-suite: npm run e2e
 ```
 
 ## Included demo app
@@ -224,32 +242,26 @@ This repo has a workflow to dogfood the action on itself:
 
 It triggers when an issue is labeled `autofix` and runs `npm test` before opening a PR.
 
-## Troubleshooting
+## Supported Models
 
-### 401 Unauthorized / "mcp startup: no servers"
+### OpenAI (requires `openai-api-key`)
+- `gpt-4o` (default) — fast, capable, cost-effective
+- `gpt-4-turbo` — more capable, higher cost
+- `o1-preview` — reasoning model
 
-If you see errors like:
-```
-mcp startup: no servers
-Reconnecting... 1/5
-ERROR: unexpected status 401 Unauthorized
-```
-
-This is typically caused by:
-1. **Empty or invalid API key** — Ensure `OPENAI_API_KEY` secret is set correctly in your repository settings.
-2. **Cached auth state** — The action now creates a clean HOME directory for Codex CLI to avoid interference from cached ChatGPT login credentials.
-
-The action validates that the API key is non-empty before running Codex CLI and will fail early with a clear error message if it's missing.
+### Anthropic (requires `anthropic-api-key`)
+- `claude-3-5-sonnet-20241022` — excellent for code
+- `claude-3-opus-20240229` — most capable Claude model
 
 ## Notes
 
 - The workflow must have `contents: write`, `pull-requests: write`, and `issues: write` permissions.
+- **Python 3.9+ is required** — add `actions/setup-python@v5` to your workflow.
 - The action only runs when the issue has the `required-label` (default: `autofix`).
 - If a branch is specified in the issue, the fix is created from that branch and the PR targets it.
-- If tests fail after Codex makes changes, the action comments on the issue and does **not** open a PR.
-- Codex CLI is instructed not to modify lockfiles or `.github/workflows/` files.
-- Codex CLI runs with `--full-auto` for non-interactive execution in CI.
-- Codex CLI runs in an isolated HOME directory to prevent auth conflicts.
+- If tests fail after Aider makes changes, the action comments on the issue and does **not** open a PR.
+- Aider is instructed not to modify lockfiles or `.github/workflows/` files.
+- Aider runs with `--yes --no-git` for non-interactive execution in CI.
 
 ## Development
 
