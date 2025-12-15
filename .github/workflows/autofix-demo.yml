@@ -1,0 +1,42 @@
+name: "Autofix Demo (issues -> PR)"
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  autofix:
+    if: contains(github.event.issue.labels.*.name, 'autofix')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install demo dependencies
+        run: npm ci
+        working-directory: examples/nextjs-form-demo
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+        working-directory: examples/nextjs-form-demo
+
+      - name: Run Baiq Autofix
+        uses: ./.
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          test-command: npm run e2e --prefix examples/nextjs-form-demo

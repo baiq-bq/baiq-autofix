@@ -166,156 +166,107 @@ So that I can reserve a seat and optionally request invoice details.
 
 ### Step 2: Create test case issues
 
-Create **4 test case issues**, one for each bug. These describe the manual test steps and expected vs actual behavior.
+Create **4 test case issues**, one for each bug. These describe the manual test steps, expected result, and which E2E test verifies them. Each test case references the user story.
 
 ---
 
-**Title:**
-```
-## TC-1: Date range validation
-```
+#### TC-1: Date range validation
+
+**Title:** `TC-1: Date range validation`
+
 **Body:**
 
-```markdown
-## Steps
-
-1. Open the form at `http://localhost:3000`.
-2. Fill in required fields (full name, email).
-3. Set `Start date` to `2026-06-10`.
-4. Set `End date` to `2026-06-09`.
-5. Submit.
-
-## Expected
-
-- The form shows a validation error on `endDate`: "End date must be on or after start date."
-- No success confirmation is shown.
-
-## Actual
-
-- (Bug) The form accepts the invalid range and shows success.
-
-## E2E test
-
-```bash
-npm run e2e:verification -- --grep "TC-1"
-```
-```
+> **User story:** References US-1 (link to your user story issue)
+>
+> **Steps:**
+> 1. Open the form at `http://localhost:3000`.
+> 2. Fill in required fields (full name, email).
+> 3. Set `Start date` to `2026-06-10`.
+> 4. Set `End date` to `2026-06-09`.
+> 5. Submit.
+>
+> **Expected:**
+> - The form shows a validation error on `endDate`: "End date must be on or after start date."
+> - No success confirmation is shown.
+>
+> **E2E test:** `npm run e2e:verification -- --grep "TC-1"`
 
 ---
 
 #### TC-2: Invoice required fields
 
-**Title:**
-
-```
-TC-2: Invoice required fields
-```
+**Title:** `TC-2: Invoice required fields`
 
 **Body:**
 
-```markdown
-## Steps
-
-1. Open the form.
-2. Fill in required fields (full name, email, dates).
-3. Check `Needs invoice`.
-4. Leave all billing fields empty.
-5. Submit.
-
-## Expected
-
-- Validation errors for: `billingAddress1`, `billingCity`, `billingPostalCode`, `billingCountryCode`.
-
-## Actual
-
-- (Bug) `billingPostalCode` is not validated; the form accepts submission without it.
-
-## E2E test
-
-```bash
-npm run e2e:verification -- --grep "TC-2"
-```
-```
+> **User story:** References US-1 (link to your user story issue)
+>
+> **Steps:**
+> 1. Open the form.
+> 2. Fill in required fields (full name, email, dates).
+> 3. Check `Needs invoice`.
+> 4. Leave all billing fields empty.
+> 5. Submit.
+>
+> **Expected:**
+> - Validation errors for: `billingAddress1`, `billingCity`, `billingPostalCode`, `billingCountryCode`.
+>
+> **E2E test:** `npm run e2e:verification -- --grep "TC-2"`
 
 ---
 
 #### TC-3: EU VAT requirement for business ticket
 
-**Title:**
-
-```
-TC-3: EU VAT requirement for business ticket
-```
+**Title:** `TC-3: EU VAT requirement for business ticket`
 
 **Body:**
 
-```markdown
-## Steps
-
-1. Open the form.
-2. Fill in required fields (full name, email, dates).
-3. Select `Ticket type = Business`.
-4. Fill in `Company name`.
-5. Set `Country code` to `ES` (an EU country).
-6. Leave `VAT number` empty.
-7. Submit.
-
-## Expected
-
-- Validation error: "VAT number is required for EU business registrations."
-
-## Actual
-
-- (Bug) No VAT validation error; the form accepts submission.
-
-## E2E test
-
-```bash
-npm run e2e:verification -- --grep "TC-3"
-```
-```
+> **User story:** References US-1 (link to your user story issue)
+>
+> **Steps:**
+> 1. Open the form.
+> 2. Fill in required fields (full name, email, dates).
+> 3. Select `Ticket type = Business`.
+> 4. Fill in `Company name`.
+> 5. Set `Country code` to `ES` (an EU country).
+> 6. Leave `VAT number` empty.
+> 7. Submit.
+>
+> **Expected:**
+> - Validation error: "VAT number is required for EU business registrations."
+>
+> **E2E test:** `npm run e2e:verification -- --grep "TC-3"`
 
 ---
 
 #### TC-4: Discount code price calculation
 
-**Title:**
-
-```
-TC-4: Discount code price calculation
-```
+**Title:** `TC-4: Discount code price calculation`
 
 **Body:**
 
-```markdown
-## Steps
-
-1. Open the form.
-2. Fill in required fields (full name, email, dates).
-3. Select `Ticket type = Standard` (base price: 19900 cents).
-4. Enter discount code `SAVE10`.
-5. Submit.
-
-## Expected
-
-- Final price is 10% lower: `17910` cents.
-
-## Actual
-
-- (Bug) Final price is `21890` cents (10% higher instead of lower).
-
-## E2E test
-
-```bash
-npm run e2e:verification -- --grep "TC-4"
-```
-```
+> **User story:** References US-1 (link to your user story issue)
+>
+> **Steps:**
+> 1. Open the form.
+> 2. Fill in required fields (full name, email, dates).
+> 3. Select `Ticket type = Standard` (base price: 19900 cents).
+> 4. Enter discount code `SAVE10`.
+> 5. Submit.
+>
+> **Expected:**
+> - Final price is 10% lower: `17910` cents.
+>
+> **E2E test:** `npm run e2e:verification -- --grep "TC-4"`
 
 ---
 
 ### Step 3: Create bug report issues
 
-Create **4 bug report issues** using the repo's **Bug report (autofix-ready)** template. Link to the user story and test case issues you created.
+Create **4 bug report issues** using the repo's **Bug report (autofix-ready)** template. Each bug report references:
+- The **user story** (requirement context)
+- The **test case** (steps and expected behavior)
+- The **actual result** (the buggy behavior observed)
 
 **Important:** After creating each bug report, add the `autofix` label to trigger the action.
 
@@ -338,6 +289,8 @@ Failure output:
 Error: expect(locator).toBeVisible()
 Locator: getByTestId('error-endDate')
 Expected: visible
+
+Actual result: The form accepts the invalid date range and shows success instead of a validation error.
 ```
 
 - **Title:** `Demo form accepts end date before start date`
@@ -361,6 +314,8 @@ Failure output:
 Error: expect(locator).toBeVisible()
 Locator: getByTestId('error-billingPostalCode')
 Expected: visible
+
+Actual result: billingPostalCode is not validated; the form accepts submission without it.
 ```
 
 - **Title:** `Demo form does not validate billing postal code`
@@ -384,6 +339,8 @@ Failure output:
 Error: expect(locator).toBeVisible()
 Locator: getByTestId('error-vatNumber')
 Expected: visible
+
+Actual result: No VAT validation error; the form accepts submission without VAT for EU business tickets.
 ```
 
 - **Title:** `Business ticket should require VAT for EU countries`
@@ -407,6 +364,8 @@ Failure output:
 Error: expect(locator).toContainText('17910')
 Locator: getByTestId('result-final-price')
 Received: "Final price: 21890 cents"
+
+Actual result: Final price is 21890 cents (10% higher instead of 10% lower).
 ```
 
 - **Title:** `Discount code SAVE10 calculates wrong final price`
