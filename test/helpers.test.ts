@@ -98,3 +98,73 @@ test("isValidApiKey returns true for key with leading/trailing spaces", () => {
   // The key itself is valid, trim is just for empty check
   assert.equal(isValidApiKey(" sk-test-key "), true);
 });
+
+// Test retry-max input parsing pattern (used in index.ts)
+function parseRetryMax(input: string | undefined): number {
+  const parsed = parseInt(input || "3", 10);
+  return Number.isNaN(parsed) ? 3 : Math.max(1, parsed);
+}
+
+test("parseRetryMax returns default 3 when input is empty", () => {
+  assert.equal(parseRetryMax(""), 3);
+});
+
+test("parseRetryMax returns default 3 when input is undefined", () => {
+  assert.equal(parseRetryMax(undefined), 3);
+});
+
+test("parseRetryMax returns 1 when input is 0 (minimum is 1)", () => {
+  assert.equal(parseRetryMax("0"), 1);
+});
+
+test("parseRetryMax returns 1 when input is negative", () => {
+  assert.equal(parseRetryMax("-5"), 1);
+});
+
+test("parseRetryMax returns correct value for valid inputs", () => {
+  assert.equal(parseRetryMax("1"), 1);
+  assert.equal(parseRetryMax("3"), 3);
+  assert.equal(parseRetryMax("5"), 5);
+  assert.equal(parseRetryMax("10"), 10);
+});
+
+test("parseRetryMax handles NaN gracefully (returns default)", () => {
+  assert.equal(parseRetryMax("invalid"), 3);
+});
+
+// Test buildAiderPrompt retry message pattern
+function buildRetryMessage(attempt: number, previousFailure: string): string | undefined {
+  if (attempt > 0 && previousFailure) {
+    return (
+      `IMPORTANT: This is retry attempt #${attempt + 1}. The previous fix attempt failed the tests.\n` +
+      "PREVIOUS TEST FAILURE OUTPUT:\n" +
+      `${previousFailure}\n\n` +
+      "Please analyze why the previous fix was incorrect and provide a different solution.\n\n"
+    );
+  }
+  return undefined;
+}
+
+test("buildRetryMessage returns undefined for first attempt", () => {
+  assert.equal(buildRetryMessage(0, "some failure"), undefined);
+});
+
+test("buildRetryMessage returns undefined when no previous failure", () => {
+  assert.equal(buildRetryMessage(1, ""), undefined);
+});
+
+test("buildRetryMessage includes attempt number and failure output", () => {
+  const msg = buildRetryMessage(1, "Test failed: expected X got Y");
+  assert.ok(msg?.includes("retry attempt #2"));
+  assert.ok(msg?.includes("Test failed: expected X got Y"));
+  assert.ok(msg?.includes("PREVIOUS TEST FAILURE OUTPUT"));
+});
+
+test("buildRetryMessage increments attempt number correctly", () => {
+  const msg1 = buildRetryMessage(1, "failure");
+  const msg2 = buildRetryMessage(2, "failure");
+  const msg3 = buildRetryMessage(3, "failure");
+  assert.ok(msg1?.includes("retry attempt #2"));
+  assert.ok(msg2?.includes("retry attempt #3"));
+  assert.ok(msg3?.includes("retry attempt #4"));
+});

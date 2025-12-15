@@ -122,7 +122,13 @@ function runAider(params: {
   };
 }
 
-function buildAiderPrompt(params: { issueTitle: string; issueBody: string; testFailureOutput?: string }): string {
+function buildAiderPrompt(params: {
+  issueTitle: string;
+  issueBody: string;
+  testFailureOutput?: string;
+  retryAttempt?: number;
+  previousTestFailure?: string;
+}): string {
   let prompt =
     "You are fixing a bug in this codebase based on a GitHub bug report issue.\n\n" +
     "The bug report structure is:\n" +
@@ -134,6 +140,14 @@ function buildAiderPrompt(params: { issueTitle: string; issueBody: string; testF
 
   if (params.testFailureOutput) {
     prompt += "TEST FAILURE OUTPUT (from running the specific test before fix):\n" + `${params.testFailureOutput}\n\n`;
+  }
+
+  if (params.retryAttempt && params.retryAttempt > 0 && params.previousTestFailure) {
+    prompt +=
+      `IMPORTANT: This is retry attempt #${params.retryAttempt + 1}. The previous fix attempt failed the tests.\n` +
+      "PREVIOUS TEST FAILURE OUTPUT:\n" +
+      `${params.previousTestFailure}\n\n` +
+      "Please analyze why the previous fix was incorrect and provide a different solution.\n\n";
   }
 
   prompt +=
@@ -158,6 +172,8 @@ async function run(): Promise<void> {
   const testCommandSuiteFallback = core.getInput("test-command-suite") || "";
   const aiderVersion = core.getInput("aider-version") || "";
   const workingDirectoryInput = core.getInput("working-directory") || "";
+  const retryMaxParsed = parseInt(core.getInput("retry-max") || "3", 10);
+  const retryMax = Number.isNaN(retryMaxParsed) ? 3 : Math.max(1, retryMaxParsed);
 
   // Validate at least one API key is provided
   if (!openaiApiKey.trim() && !anthropicApiKey.trim()) {
@@ -307,79 +323,120 @@ async function run(): Promise<void> {
     const branchName = `qa/issue-${issueNumber}-${Date.now()}`;
     exec(`git checkout -b ${shellEscape(branchName)}`);
 
-    // Build the prompt for Aider
-    const prompt = buildAiderPrompt({
-      issueTitle,
-      issueBody: issueBodyForPrompt,
-      testFailureOutput,
-    });
+    // Retry loop for Aider fix + test validation
+    let previousTestFailure: string | undefined;
+    let fixSucceeded = false;
 
-    // Run Aider - it will modify files directly
-    const aiderResult = runAider({
-      prompt,
-      repoRoot,
-      workingDirectory: workingDirectory !== repoRoot ? workingDirectory : undefined,
-      openaiApiKey: openaiApiKey || undefined,
-      anthropicApiKey: anthropicApiKey || undefined,
-      model,
-    });
-
-    core.info("=== AIDER OUTPUT ===");
-    core.info(truncate(aiderResult.stdout, 4000));
-    if (aiderResult.stderr) {
-      core.info("=== AIDER STDERR ===");
-      core.info(truncate(aiderResult.stderr, 2000));
-    }
-    core.info("=== END AIDER OUTPUT ===");
-
-    if (aiderResult.exitCode !== 0) {
-      await octokit.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number: issueNumber,
-        body:
-          "Aider failed to generate a fix.\n\n" +
-          "Output:\n" +
-          `\n\n\`\`\`\n${truncate((aiderResult.stdout + "\n" + aiderResult.stderr).trim(), 6000)}\n\`\`\`\n`,
-      });
-      core.setFailed("Aider failed to generate a fix.");
-      return;
-    }
-
-    // Check if Aider made any changes
-    const status = exec("git status --porcelain", { silent: true }).stdout.trim();
-    if (!status) {
-      await octokit.rest.issues.createComment({
-        owner,
-        repo,
-        issue_number: issueNumber,
-        body: "Aider analyzed the issue but made no file changes. No PR was created.",
-      });
-      return;
-    }
-
-    core.info(`Files changed:\n${status}`);
-
-    // Run FULL TEST SUITE after Aider fix to check for regressions
-    if (testCommandSuite.trim()) {
-      core.info(`Running full test suite for regression check: ${testCommandSuite}`);
-      const testRes = exec(testCommandSuite, { silent: true, cwd: workingDirectory });
-      if (testRes.exitCode !== 0) {
-        await octokit.rest.issues.createComment({
-          owner,
-          repo,
-          issue_number: issueNumber,
-          body:
-            "Aider generated a fix, but the full test suite failed (regression detected). PR not opened.\n\n" +
-            "Test output:\n" +
-            `\n\n\`\`\`\n${truncate((testRes.stdout + "\n" + testRes.stderr).trim(), 8000)}\n\`\`\`\n`,
-        });
-        core.setFailed("Full test suite failed (regression); PR not opened.");
-        return;
+    for (let attempt = 0; attempt < retryMax; attempt++) {
+      if (attempt > 0) {
+        core.info(`\n=== RETRY ATTEMPT ${attempt + 1}/${retryMax} ===`);
+        // Reset changes from previous failed attempt
+        exec("git checkout .", { silent: true });
+        exec("git clean -fd", { silent: true });
       }
-      core.info("Full test suite passed - no regressions detected.");
-    } else {
-      core.info("No full test suite command provided; proceeding to open PR.");
+
+      // Build the prompt for Aider (with retry info if applicable)
+      const prompt = buildAiderPrompt({
+        issueTitle,
+        issueBody: issueBodyForPrompt,
+        testFailureOutput,
+        retryAttempt: attempt,
+        previousTestFailure,
+      });
+
+      // Run Aider - it will modify files directly
+      const aiderResult = runAider({
+        prompt,
+        repoRoot,
+        workingDirectory: workingDirectory !== repoRoot ? workingDirectory : undefined,
+        openaiApiKey: openaiApiKey || undefined,
+        anthropicApiKey: anthropicApiKey || undefined,
+        model,
+      });
+
+      core.info("=== AIDER OUTPUT ===");
+      core.info(truncate(aiderResult.stdout, 4000));
+      if (aiderResult.stderr) {
+        core.info("=== AIDER STDERR ===");
+        core.info(truncate(aiderResult.stderr, 2000));
+      }
+      core.info("=== END AIDER OUTPUT ===");
+
+      if (aiderResult.exitCode !== 0) {
+        if (attempt === retryMax - 1) {
+          await octokit.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: issueNumber,
+            body:
+              `Aider failed to generate a fix after ${retryMax} attempt(s).\n\n` +
+              "Output:\n" +
+              `\n\n\`\`\`\n${truncate((aiderResult.stdout + "\n" + aiderResult.stderr).trim(), 6000)}\n\`\`\`\n`,
+          });
+          core.setFailed("Aider failed to generate a fix.");
+          return;
+        }
+        core.warning(`Aider failed (attempt ${attempt + 1}/${retryMax}), will retry...`);
+        previousTestFailure = truncate((aiderResult.stdout + "\n" + aiderResult.stderr).trim(), 10_000);
+        continue;
+      }
+
+      // Check if Aider made any changes
+      const status = exec("git status --porcelain", { silent: true }).stdout.trim();
+      if (!status) {
+        if (attempt === retryMax - 1) {
+          await octokit.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: issueNumber,
+            body: `Aider analyzed the issue but made no file changes after ${retryMax} attempt(s). No PR was created.`,
+          });
+          return;
+        }
+        core.warning(`Aider made no changes (attempt ${attempt + 1}/${retryMax}), will retry...`);
+        previousTestFailure =
+          "Aider did not make any file changes. Please analyze the issue more carefully and modify the appropriate files.";
+        continue;
+      }
+
+      core.info(`Files changed:\n${status}`);
+
+      // Run FULL TEST SUITE after Aider fix to check for regressions
+      if (testCommandSuite.trim()) {
+        core.info(`Running full test suite for regression check: ${testCommandSuite}`);
+        const testRes = exec(testCommandSuite, { silent: true, cwd: workingDirectory });
+        if (testRes.exitCode !== 0) {
+          const testOutput = truncate((testRes.stdout + "\n" + testRes.stderr).trim(), 10_000);
+          if (attempt === retryMax - 1) {
+            await octokit.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              body:
+                `Aider generated a fix, but the full test suite failed after ${retryMax} attempt(s). PR not opened.\n\n` +
+                "Test output:\n" +
+                `\n\n\`\`\`\n${truncate(testOutput, 8000)}\n\`\`\`\n`,
+            });
+            core.setFailed(`Full test suite failed after ${retryMax} attempt(s); PR not opened.`);
+            return;
+          }
+          core.warning(`Tests failed (attempt ${attempt + 1}/${retryMax}), will retry with failure info...`);
+          previousTestFailure = testOutput;
+          continue;
+        }
+        core.info("Full test suite passed - no regressions detected.");
+      } else {
+        core.info("No full test suite command provided; proceeding to open PR.");
+      }
+
+      // If we reach here, fix succeeded
+      fixSucceeded = true;
+      break;
+    }
+
+    if (!fixSucceeded) {
+      core.setFailed(`Failed to generate a working fix after ${retryMax} attempts.`);
+      return;
     }
 
     core.info("Committing changes...");
