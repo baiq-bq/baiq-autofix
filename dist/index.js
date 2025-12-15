@@ -100,13 +100,7 @@ function runAider(params) {
     // --no-auto-commits: don't auto-commit changes
     // --model: specify the model
     // --message-file: read prompt from file
-    const args = [
-        "--yes",
-        "--no-git",
-        "--no-auto-commits",
-        "--model", params.model,
-        "--message-file", promptFile,
-    ];
+    const args = ["--yes", "--no-git", "--no-auto-commits", "--model", params.model, "--message-file", promptFile];
     core.info("Running Aider...");
     core.info(`aider ${args.slice(0, -2).join(" ")} --message-file <prompt>`);
     // Build environment with API keys
