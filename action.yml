@@ -34,6 +34,10 @@ inputs:
     description: "Version of @openai/codex to install (leave empty for latest)"
     required: false
     default: ""
+  working-directory:
+    description: "Working directory for running test commands and Codex CLI (defaults to repo root)"
+    required: false
+    default: ""
 
 outputs:
   pr-url:

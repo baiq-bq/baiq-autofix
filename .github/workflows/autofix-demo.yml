@@ -40,6 +40,7 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          working-directory: examples/nextjs-form-demo
           # Test commands are specified in the bug report issue fields:
           # - "Test command (specific test for this bug)" -> runs BEFORE fix
           # - "Test command (full suite for regression)" -> runs AFTER fix

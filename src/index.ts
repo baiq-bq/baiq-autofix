@@ -14,12 +14,13 @@ function shellEscape(arg: string): string {
   return `'${arg.replace(/'/g, "'\\''")}'`;
 }
 
-function exec(cmd: string, opts?: { silent?: boolean; env?: NodeJS.ProcessEnv }): ExecResult {
+function exec(cmd: string, opts?: { silent?: boolean; env?: NodeJS.ProcessEnv; cwd?: string }): ExecResult {
   try {
     const stdout = execSync(cmd, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       env: opts?.env ?? process.env,
+      cwd: opts?.cwd,
     });
     if (!opts?.silent) core.info(cmd);
     return { stdout, stderr: "", exitCode: 0 };
@@ -111,6 +112,7 @@ async function run(): Promise<void> {
   const testCommandSpecificFallback = core.getInput("test-command-specific") || "";
   const testCommandSuiteFallback = core.getInput("test-command-suite") || "";
   const codexVersion = core.getInput("codex-version") || "";
+  const workingDirectoryInput = core.getInput("working-directory") || "";
 
   let owner: string | undefined;
   let repo: string | undefined;
@@ -159,6 +161,9 @@ async function run(): Promise<void> {
       extractIssueFormFieldValue(issueBody, "Test command (specific test for this bug)") || testCommandSpecificFallback;
     const testCommandSuite =
       extractIssueFormFieldValue(issueBody, "Test command (full suite for regression)") || testCommandSuiteFallback;
+
+    // Extract branch from issue body (takes priority over base-branch input)
+    const issueBranch = extractIssueFormFieldValue(issueBody, "Branch where bug was discovered") || "";
 
     const userStoryRef = parseGitHubIssueRef({
       input: userStoryRefRaw,
@@ -219,15 +224,17 @@ async function run(): Promise<void> {
 
     const repoResponse = await octokit.rest.repos.get({ owner, repo });
     const defaultBranch = repoResponse.data.default_branch;
-    const baseBranch = baseBranchInput.trim() || defaultBranch;
+    // Priority: issue branch field > action input > repo default
+    const baseBranch = issueBranch.trim() || baseBranchInput.trim() || defaultBranch;
 
     const repoRoot = process.cwd();
+    const workingDirectory = workingDirectoryInput.trim() ? `${repoRoot}/${workingDirectoryInput.trim()}` : repoRoot;
 
     // Run SPECIFIC test BEFORE generating the fix to capture failure output for the prompt
     let testFailureOutput: string | undefined;
     if (testCommandSpecific.trim()) {
       core.info(`Running specific test to capture failure output: ${testCommandSpecific}`);
-      const preTestRes = exec(testCommandSpecific, { silent: true });
+      const preTestRes = exec(testCommandSpecific, { silent: true, cwd: workingDirectory });
       if (preTestRes.exitCode !== 0) {
         testFailureOutput = truncate((preTestRes.stdout + "\n" + preTestRes.stderr).trim(), 15_000);
         core.info("Specific test failed (expected for bug). Including failure output in prompt context.");
@@ -260,7 +267,7 @@ async function run(): Promise<void> {
     // Run Codex CLI - it will modify files directly
     const codexResult = runCodexExec({
       prompt,
-      workingDirectory: repoRoot,
+      workingDirectory,
       openaiApiKey,
       model: model || undefined,
     });
@@ -304,7 +311,7 @@ async function run(): Promise<void> {
     // Run FULL TEST SUITE after Codex fix to check for regressions
     if (testCommandSuite.trim()) {
       core.info(`Running full test suite for regression check: ${testCommandSuite}`);
-      const testRes = exec(testCommandSuite, { silent: true });
+      const testRes = exec(testCommandSuite, { silent: true, cwd: workingDirectory });
       if (testRes.exitCode !== 0) {
         await octokit.rest.issues.createComment({
           owner,
