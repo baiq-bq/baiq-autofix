@@ -1,0 +1,40 @@
+name: "Baiq Autofix"
+description: "Automatic bug fixes, powered by Baiq, the IA of BQ"
+branding:
+  icon: "git-pull-request"
+  color: "purple"
+inputs:
+  github-token:
+    description: "GitHub token (use secrets.GITHUB_TOKEN)"
+    required: true
+  openai-api-key:
+    description: "OpenAI API key"
+    required: true
+  model:
+    description: "OpenAI model to use"
+    required: false
+    default: "GPT-5.1-Codex-Max"
+  required-label:
+    description: "Only run if the issue has this label"
+    required: false
+    default: "autofix"
+  base-branch:
+    description: "Base branch for PR (defaults to repo default branch)"
+    required: false
+    default: ""
+  test-command:
+    description: "Command to run before opening a PR (leave empty to skip)"
+    required: false
+    default: ""
+  max-diff-lines:
+    description: "Maximum number of lines allowed in the generated diff"
+    required: false
+    default: "800"
+
+outputs:
+  pr-url:
+    description: "URL of the created pull request"
+
+runs:
+  using: "node24"
+  main: "dist/index.js"

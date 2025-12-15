@@ -1,0 +1,58 @@
+name: Bug report (autofix-ready)
+description: Bug report including user story + repro + test info
+labels:
+  - bug
+body:
+  - type: input
+    id: user_story
+    attributes:
+      label: User story issue (reference)
+      description: Link to the user story issue/PR related to this bug
+      placeholder: https://github.com/<org>/<repo>/issues/123
+    validations:
+      required: true
+
+  - type: textarea
+    id: test_case
+    attributes:
+      label: Test case used to discover the bug (manual)
+      description: Steps/data/environment + expected vs actual
+      placeholder: |
+        Environment:
+        - OS:
+        - Node:
+        
+        Steps:
+        1) ...
+        2) ...
+        
+        Expected:
+        Actual:
+    validations:
+      required: true
+
+  - type: textarea
+    id: automated_test
+    attributes:
+      label: Automated test that fails (if exists)
+      description: Include command, test path/name, and failure output
+      placeholder: |
+        Command:
+        npm test
+
+        Test file/name:
+        path/to/test.spec.ts - "should ..."
+
+        Failure output:
+        <paste output>
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: autofix_gate
+    attributes:
+      label: Autofix gate
+      description: Add the `autofix` label after filling this out to trigger the action
+      options:
+        - label: I confirm this issue contains enough context for an automated fix
+          required: false
