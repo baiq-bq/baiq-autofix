@@ -1,16 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import * as path from "node:path";
 
-import {
-  countLines,
-  extractDiffOnly,
-  extractIssueFormFieldValue,
-  parseGitHubIssueRef,
-  safeRepoRelativePath,
-  truncate,
-  validateDiff,
-} from "../src/lib";
+import { extractIssueFormFieldValue, parseGitHubIssueRef, truncate } from "../src/lib";
 
 test("truncate returns original string when under limit", () => {
   assert.equal(truncate("abc", 10), "abc");
@@ -20,83 +11,6 @@ test("truncate appends truncation notice when over limit", () => {
   const out = truncate("a".repeat(20), 5);
   assert.ok(out.startsWith("aaaaa"));
   assert.ok(out.includes("TRUNCATED"));
-});
-
-test("countLines counts newline separated lines", () => {
-  assert.equal(countLines("a\nb\n"), 3);
-});
-
-test("safeRepoRelativePath rejects absolute paths", () => {
-  assert.throws(() => safeRepoRelativePath("/repo", "/etc/passwd"));
-});
-
-test("safeRepoRelativePath rejects path traversal", () => {
-  assert.throws(() => safeRepoRelativePath("/repo", "../x"));
-});
-
-test("safeRepoRelativePath resolves within repo", () => {
-  const root = "/repo";
-  const resolved = safeRepoRelativePath(root, "src/index.ts");
-  assert.equal(resolved, path.resolve(root, "src/index.ts"));
-});
-
-test("extractDiffOnly returns diff when prefixed with chatter", () => {
-  const text = "hello\n\ndiff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n";
-  const diff = extractDiffOnly(text);
-  assert.ok(diff.startsWith("diff --git"));
-});
-
-test("extractDiffOnly throws when no diff exists", () => {
-  assert.throws(() => extractDiffOnly("nope"));
-});
-
-test("extractDiffOnly strips markdown code fences", () => {
-  const text = "```diff\ndiff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n```";
-  const diff = extractDiffOnly(text);
-  assert.ok(diff.startsWith("diff --git"));
-  assert.ok(!diff.includes("```"));
-});
-
-test("extractDiffOnly handles --- a/ format without git header", () => {
-  const text = "Here is the fix:\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,3 @@\n";
-  const diff = extractDiffOnly(text);
-  assert.ok(diff.startsWith("--- a/file.ts"));
-});
-
-test("validateDiff rejects lockfile changes", () => {
-  const diff =
-    "diff --git a/package-lock.json b/package-lock.json\n--- a/package-lock.json\n+++ b/package-lock.json\n@@ -1,3 +1,3 @@\n";
-  assert.throws(() => validateDiff(diff));
-});
-
-test("validateDiff rejects binary patches", () => {
-  const diff = "diff --git a/a.bin b/a.bin\nGIT binary patch\n";
-  assert.throws(() => validateDiff(diff));
-});
-
-test("validateDiff allows simple text diff", () => {
-  const diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n";
-  validateDiff(diff);
-});
-
-test("validateDiff rejects malformed hunk headers without line numbers", () => {
-  const diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@\n";
-  assert.throws(() => validateDiff(diff), /malformed hunk headers/);
-});
-
-test("validateDiff rejects hunk headers with partial line numbers", () => {
-  const diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 @@\n";
-  assert.throws(() => validateDiff(diff), /malformed hunk headers/);
-});
-
-test("validateDiff accepts hunk headers with optional context", () => {
-  const diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@ function name\n";
-  validateDiff(diff);
-});
-
-test("validateDiff accepts hunk headers with line counts", () => {
-  const diff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -10,7 +10,8 @@\n";
-  validateDiff(diff);
 });
 
 test("extractIssueFormFieldValue extracts single-line field", () => {

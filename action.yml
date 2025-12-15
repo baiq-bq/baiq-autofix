@@ -11,7 +11,7 @@ inputs:
     description: "OpenAI API key"
     required: true
   model:
-    description: "OpenAI model to use"
+    description: "Model to use with Codex CLI (e.g., gpt-5.1-codex-max, o3, o4-mini)"
     required: false
     default: "gpt-5.1-codex-max"
   required-label:
@@ -30,10 +30,10 @@ inputs:
     description: "Fallback command for full test suite (overridden by issue field 'Test command (full suite for regression)')"
     required: false
     default: ""
-  max-diff-lines:
-    description: "Maximum number of lines allowed in the generated diff"
+  codex-version:
+    description: "Version of @openai/codex to install (leave empty for latest)"
     required: false
-    default: "800"
+    default: ""
 
 outputs:
   pr-url:

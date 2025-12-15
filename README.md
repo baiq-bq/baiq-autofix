@@ -2,7 +2,7 @@
 
 > Automatic bug fixes, powered by **Baiq**, the IA of BQ
 
-A GitHub Action that automatically fixes bugs by reading issue context, generating a patch with OpenAI, applying it, running tests, and opening a pull request.
+A GitHub Action that automatically fixes bugs using [OpenAI Codex CLI](https://github.com/openai/codex). Codex CLI has full codebase awareness, making it ideal for fixing bugs in large projects.
 
 ## How it works
 
@@ -13,10 +13,10 @@ A GitHub Action that automatically fixes bugs by reading issue context, generati
    - **Full test suite command** (for regression check)
 3. It fetches the referenced issues and includes them as context.
 4. **Runs the specific test FIRST** to capture failure output — this gives the AI model the actual test errors.
-5. The model selects relevant files, generates a unified diff, and the action applies it.
+5. **Codex CLI analyzes the entire codebase** and makes the necessary fixes directly.
 6. **Runs the full test suite** to check for regressions.
 7. If all tests pass, the action opens a PR and comments on the issue.
-8. If tests fail or the patch cannot be applied, the action comments on the issue with details.
+8. If tests fail, the action comments on the issue with details.
 
 ## Inputs
 
@@ -24,12 +24,12 @@ A GitHub Action that automatically fixes bugs by reading issue context, generati
 |-------|----------|---------|-------------|
 | `github-token` | ✅ | — | GitHub token (use `secrets.GITHUB_TOKEN`) |
 | `openai-api-key` | ✅ | — | OpenAI API key |
-| `model` | ❌ | `gpt-5.1-codex-max` | OpenAI model to use |
+| `model` | ❌ | `gpt-5.1-codex-max` | Model to use with Codex CLI |
 | `required-label` | ❌ | `autofix` | Only run if the issue has this label |
 | `base-branch` | ❌ | repo default | Base branch for the PR |
 | `test-command-specific` | ❌ | (empty) | Fallback command for specific bug test (overridden by issue field) |
 | `test-command-suite` | ❌ | (empty) | Fallback command for full test suite (overridden by issue field) |
-| `max-diff-lines` | ❌ | `800` | Maximum lines allowed in the generated diff |
+| `codex-version` | ❌ | (latest) | Version of `@openai/codex` to install |
 
 ## Outputs
 
@@ -218,9 +218,9 @@ It triggers when an issue is labeled `autofix` and runs `npm test` before openin
 
 - The workflow must have `contents: write`, `pull-requests: write`, and `issues: write` permissions.
 - The action only runs when the issue has the `required-label` (default: `autofix`).
-- If `test-command` is set and tests fail, the action comments on the issue and does **not** open a PR.
-- The action will not modify lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`) or `.github/workflows/` files.
-- The action validates that generated diffs have properly formatted hunk headers with line numbers (e.g., `@@ -1,3 +1,3 @@`).
+- If tests fail after Codex makes changes, the action comments on the issue and does **not** open a PR.
+- Codex CLI is instructed not to modify lockfiles or `.github/workflows/` files.
+- Codex CLI runs with `--approval-mode full-auto` for non-interactive execution in CI.
 
 ## Development
 
