@@ -224,6 +224,23 @@ This repo has a workflow to dogfood the action on itself:
 
 It triggers when an issue is labeled `autofix` and runs `npm test` before opening a PR.
 
+## Troubleshooting
+
+### 401 Unauthorized / "mcp startup: no servers"
+
+If you see errors like:
+```
+mcp startup: no servers
+Reconnecting... 1/5
+ERROR: unexpected status 401 Unauthorized
+```
+
+This is typically caused by:
+1. **Empty or invalid API key** — Ensure `OPENAI_API_KEY` secret is set correctly in your repository settings.
+2. **Cached auth state** — The action now creates a clean HOME directory for Codex CLI to avoid interference from cached ChatGPT login credentials.
+
+The action validates that the API key is non-empty before running Codex CLI and will fail early with a clear error message if it's missing.
+
 ## Notes
 
 - The workflow must have `contents: write`, `pull-requests: write`, and `issues: write` permissions.
@@ -232,6 +249,7 @@ It triggers when an issue is labeled `autofix` and runs `npm test` before openin
 - If tests fail after Codex makes changes, the action comments on the issue and does **not** open a PR.
 - Codex CLI is instructed not to modify lockfiles or `.github/workflows/` files.
 - Codex CLI runs with `--full-auto` for non-interactive execution in CI.
+- Codex CLI runs in an isolated HOME directory to prevent auth conflicts.
 
 ## Development
 
