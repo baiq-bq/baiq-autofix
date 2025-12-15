@@ -109,16 +109,25 @@ async function generateText(params) {
     throw lastError ?? new Error("generateText failed with no error captured");
 }
 async function askForFilesToRead(params) {
-    const prompt = "You are an assistant that helps fix a repository based on a GitHub issue. " +
-        "Given the issue and repository file list, choose up to 8 files that are most relevant to inspect. " +
+    const prompt = "You are an assistant that helps fix bugs in a repository based on a GitHub bug report issue. " +
+        "The bug report contains: " +
+        "(1) a reference to a USER STORY issue describing the requirement, " +
+        "(2) a reference to a TEST CASE issue describing preconditions, steps, and expected result, " +
+        "(3) a BUG DESCRIPTION explaining expected vs actual behavior. " +
+        "If automated tests exist, the TEST FAILURE OUTPUT is also provided showing the actual test errors. " +
+        "Given the issue and repository file list, choose up to 8 files that are most relevant to inspect for fixing the bug. " +
         "Return ONLY valid JSON of the form: {\"files\":[\"path1\",\"path2\"]}.";
+    let input = `Issue title:\n${params.issueTitle}\n\n` +
+        `Issue body:\n${params.issueBody}\n\n` +
+        `Repository file list (git ls-files):\n${params.fileList}`;
+    if (params.testFailureOutput) {
+        input += `\n\nTEST FAILURE OUTPUT:\n${params.testFailureOutput}`;
+    }
     const text = await generateText({
         client: params.client,
         model: params.model,
         instructions: prompt,
-        input: `Issue title:\n${params.issueTitle}\n\n` +
-            `Issue body:\n${params.issueBody}\n\n` +
-            `Repository file list (git ls-files):\n${params.fileList}`,
+        input,
         temperature: 0,
     });
     let parsed;
@@ -139,17 +148,27 @@ async function askForFilesToRead(params) {
         .slice(0, 8);
 }
 async function askForUnifiedDiff(params) {
-    const system = "You are an expert software engineer. Generate a minimal fix for the bug described. " +
+    const system = "You are an expert software engineer fixing a bug based on a GitHub bug report. " +
+        "The bug report structure is: " +
+        "(1) USER STORY: describes the requirement/feature being tested, " +
+        "(2) TEST CASE: describes preconditions, step-by-step actions, and expected result, " +
+        "(3) BUG DESCRIPTION: explains expected vs actual behavior (the bug). " +
+        "If automated tests exist, the TEST FAILURE OUTPUT shows the actual test errors that need to be fixed. " +
+        "Your task: generate a minimal fix so the actual behavior matches the expected behavior from the test case. " +
         "Return ONLY a unified diff that can be applied with `git apply`. " +
         "Do not include explanations, markdown fences, or extra text. " +
         "Do not modify lockfiles (package-lock.json, pnpm-lock.yaml, yarn.lock) or .github/workflows/*.";
+    let input = `Issue title:\n${params.issueTitle}\n\n` +
+        `Issue body:\n${params.issueBody}\n\n` +
+        `Repository context (selected file contents):\n${params.fileContext}`;
+    if (params.testFailureOutput) {
+        input += `\n\nTEST FAILURE OUTPUT:\n${params.testFailureOutput}`;
+    }
     const text = await generateText({
         client: params.client,
         model: params.model,
         instructions: system,
-        input: `Issue title:\n${params.issueTitle}\n\n` +
-            `Issue body:\n${params.issueBody}\n\n` +
-            `Repository context (selected file contents):\n${params.fileContext}`,
+        input,
         temperature: 0,
     });
     return text.trim();
@@ -160,7 +179,8 @@ async function run() {
     const model = core.getInput("model") || "GPT-5.1-Codex-Max";
     const requiredLabel = core.getInput("required-label") || "autofix";
     const baseBranchInput = core.getInput("base-branch") || "";
-    const testCommand = core.getInput("test-command") || "";
+    const testCommandSpecificFallback = core.getInput("test-command-specific") || "";
+    const testCommandSuiteFallback = core.getInput("test-command-suite") || "";
     const maxDiffLines = Number(core.getInput("max-diff-lines") || "800");
     let owner;
     let repo;
@@ -192,20 +212,92 @@ async function run() {
         const issueResponse = await octokit.rest.issues.get({ owner, repo, issue_number: issueNumber });
         const issueTitle = issueResponse.data.title ?? "";
         const issueBody = issueResponse.data.body ?? "";
+        const userStoryRefRaw = (0, lib_1.extractIssueFormFieldValue)(issueBody, "User story issue (reference)") ??
+            (0, lib_1.extractIssueFormFieldValue)(issueBody, "User story issue") ??
+            "";
+        const testCaseRefRaw = (0, lib_1.extractIssueFormFieldValue)(issueBody, "Test case issue (reference)") ??
+            (0, lib_1.extractIssueFormFieldValue)(issueBody, "Test case issue") ??
+            "";
+        // Extract test commands from issue body, fallback to action inputs
+        const testCommandSpecific = (0, lib_1.extractIssueFormFieldValue)(issueBody, "Test command (specific test for this bug)") ||
+            testCommandSpecificFallback;
+        const testCommandSuite = (0, lib_1.extractIssueFormFieldValue)(issueBody, "Test command (full suite for regression)") ||
+            testCommandSuiteFallback;
+        const userStoryRef = (0, lib_1.parseGitHubIssueRef)({
+            input: userStoryRefRaw,
+            defaultOwner: owner,
+            defaultRepo: repo,
+        });
+        const testCaseRef = (0, lib_1.parseGitHubIssueRef)({
+            input: testCaseRefRaw,
+            defaultOwner: owner,
+            defaultRepo: repo,
+        });
+        const referencedContexts = [];
+        if (userStoryRef) {
+            try {
+                const refIssue = await octokit.rest.issues.get({
+                    owner: userStoryRef.owner,
+                    repo: userStoryRef.repo,
+                    issue_number: userStoryRef.number,
+                });
+                referencedContexts.push("REFERENCED USER STORY ISSUE\n" +
+                    `URL: ${userStoryRef.url}\n` +
+                    `Title: ${refIssue.data.title ?? ""}\n\n` +
+                    `Body:\n${refIssue.data.body ?? ""}\n`);
+            }
+            catch (e) {
+                core.warning(`Failed to fetch referenced user story issue (${userStoryRef.url}). Continuing without it. ${e instanceof Error ? e.message : String(e)}`);
+            }
+        }
+        if (testCaseRef) {
+            try {
+                const refIssue = await octokit.rest.issues.get({
+                    owner: testCaseRef.owner,
+                    repo: testCaseRef.repo,
+                    issue_number: testCaseRef.number,
+                });
+                referencedContexts.push("REFERENCED TEST CASE ISSUE\n" +
+                    `URL: ${testCaseRef.url}\n` +
+                    `Title: ${refIssue.data.title ?? ""}\n\n` +
+                    `Body:\n${refIssue.data.body ?? ""}\n`);
+            }
+            catch (e) {
+                core.warning(`Failed to fetch referenced test case issue (${testCaseRef.url}). Continuing without it. ${e instanceof Error ? e.message : String(e)}`);
+            }
+        }
+        const issueBodyForPrompt = (0, lib_1.truncate)(issueBody + (referencedContexts.length ? `\n\n${referencedContexts.join("\n\n")}` : ""), 180_000);
         const repoResponse = await octokit.rest.repos.get({ owner, repo });
         const defaultBranch = repoResponse.data.default_branch;
         const baseBranch = baseBranchInput.trim() || defaultBranch;
         const repoRoot = process.cwd();
         const fileListRaw = exec("git ls-files", { silent: true }).stdout;
         const fileList = (0, lib_1.truncate)(fileListRaw, 120_000);
+        // Run SPECIFIC test BEFORE generating the fix to capture failure output for the prompt
+        let testFailureOutput;
+        if (testCommandSpecific.trim()) {
+            core.info(`Running specific test to capture failure output: ${testCommandSpecific}`);
+            const preTestRes = exec(testCommandSpecific, { silent: true });
+            if (preTestRes.exitCode !== 0) {
+                testFailureOutput = (0, lib_1.truncate)((preTestRes.stdout + "\n" + preTestRes.stderr).trim(), 15_000);
+                core.info("Specific test failed (expected for bug). Including failure output in prompt context.");
+            }
+            else {
+                core.info("Specific test passed before fix - no failure output to include.");
+            }
+        }
+        else {
+            core.info("No specific test command provided; skipping pre-fix test.");
+        }
         const client = new openai_1.default({ apiKey: openaiApiKey });
         core.info("Selecting files to read...");
         const filesToRead = await askForFilesToRead({
             client,
             model,
             issueTitle,
-            issueBody,
+            issueBody: issueBodyForPrompt,
             fileList,
+            testFailureOutput,
         });
         if (filesToRead.length === 0) {
             throw new Error("Model did not select any files to read.");
@@ -226,8 +318,9 @@ async function run() {
             client,
             model,
             issueTitle,
-            issueBody,
+            issueBody: issueBodyForPrompt,
             fileContext,
+            testFailureOutput,
         });
         const diff = (0, lib_1.extractDiffOnly)(modelOutput);
         (0, lib_1.validateDiff)(diff);
@@ -267,24 +360,26 @@ async function run() {
             });
             return;
         }
-        if (testCommand.trim()) {
-            core.info(`Running tests: ${testCommand}`);
-            const testRes = exec(testCommand, { silent: true });
+        // Run FULL TEST SUITE after applying fix to check for regressions
+        if (testCommandSuite.trim()) {
+            core.info(`Running full test suite for regression check: ${testCommandSuite}`);
+            const testRes = exec(testCommandSuite, { silent: true });
             if (testRes.exitCode !== 0) {
                 await octokit.rest.issues.createComment({
                     owner,
                     repo,
                     issue_number: issueNumber,
-                    body: "I generated a patch and applied it locally, but tests failed so I did not open a PR.\n\n" +
+                    body: "I generated a patch and applied it locally, but the full test suite failed (regression detected). PR not opened.\n\n" +
                         "Test output:\n" +
                         `\n\n\`\`\`\n${(0, lib_1.truncate)((testRes.stdout + "\n" + testRes.stderr).trim(), 8000)}\n\`\`\`\n`,
                 });
-                core.setFailed("Tests failed; PR not opened.");
+                core.setFailed("Full test suite failed (regression); PR not opened.");
                 return;
             }
+            core.info("Full test suite passed - no regressions detected.");
         }
         else {
-            core.info("No test-command provided; skipping tests.");
+            core.info("No full test suite command provided; proceeding to open PR.");
         }
         core.info("Committing changes...");
         exec('git config user.name "github-actions[bot]"');
@@ -380,6 +475,8 @@ exports.safeRepoRelativePath = safeRepoRelativePath;
 exports.countLines = countLines;
 exports.extractDiffOnly = extractDiffOnly;
 exports.validateDiff = validateDiff;
+exports.extractIssueFormFieldValue = extractIssueFormFieldValue;
+exports.parseGitHubIssueRef = parseGitHubIssueRef;
 const path = __importStar(__nccwpck_require__(6928));
 function truncate(s, maxChars) {
     if (s.length <= maxChars)
@@ -429,6 +526,75 @@ function validateDiff(diff) {
     if (/^GIT binary patch/m.test(diff)) {
         throw new Error("Binary patches are not supported.");
     }
+}
+function extractIssueFormFieldValue(issueBody, label) {
+    if (!issueBody.trim())
+        return undefined;
+    const lines = issueBody.split(/\r?\n/);
+    const headingRe = new RegExp(`^#{1,6}\\s*${escapeRegExp(label)}\\s*$`, "i");
+    for (let i = 0; i < lines.length; i++) {
+        if (!headingRe.test(lines[i].trim()))
+            continue;
+        const out = [];
+        for (let j = i + 1; j < lines.length; j++) {
+            const line = lines[j];
+            if (/^#{1,6}\s+/.test(line))
+                break;
+            out.push(line);
+        }
+        const val = out
+            .join("\n")
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter((l) => l.length > 0)
+            .join("\n")
+            .trim();
+        return val || undefined;
+    }
+    return undefined;
+}
+function parseGitHubIssueRef(params) {
+    const raw = params.input.trim();
+    if (!raw)
+        return undefined;
+    const hashMatch = raw.match(/^#(\d+)$/);
+    if (hashMatch) {
+        const number = Number(hashMatch[1]);
+        if (!Number.isFinite(number) || number <= 0)
+            return undefined;
+        if (!params.defaultOwner || !params.defaultRepo)
+            return undefined;
+        return {
+            owner: params.defaultOwner,
+            repo: params.defaultRepo,
+            number,
+            url: `https://github.com/${params.defaultOwner}/${params.defaultRepo}/issues/${number}`,
+        };
+    }
+    let u;
+    try {
+        u = new URL(raw);
+    }
+    catch {
+        return undefined;
+    }
+    if (u.hostname !== "github.com")
+        return undefined;
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length < 4)
+        return undefined;
+    const [owner, repo, kind, numStr] = parts;
+    if (!owner || !repo)
+        return undefined;
+    if (kind !== "issues" && kind !== "pull")
+        return undefined;
+    const number = Number(numStr);
+    if (!Number.isFinite(number) || number <= 0)
+        return undefined;
+    return { owner, repo, number, url: u.toString() };
+}
+function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 

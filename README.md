@@ -7,12 +7,16 @@ A GitHub Action that automatically fixes bugs by reading issue context, generati
 ## How it works
 
 1. A bug issue is opened (or labeled with `autofix`).
-2. The action reads the issue body and extracts references to a **user story** and a **test case** issue.
-3. It fetches those referenced issues and includes them as context for the AI model.
-4. The model selects relevant files, generates a unified diff, and the action applies it.
-5. If a `test-command` is configured, the action runs tests.
-6. If tests pass (or no test command is set), the action opens a PR and comments on the issue.
-7. If tests fail or the patch cannot be applied, the action comments on the issue with details.
+2. The action reads the issue body and extracts:
+   - References to **user story** and **test case** issues
+   - **Specific test command** (for this bug)
+   - **Full test suite command** (for regression check)
+3. It fetches the referenced issues and includes them as context.
+4. **Runs the specific test FIRST** to capture failure output — this gives the AI model the actual test errors.
+5. The model selects relevant files, generates a unified diff, and the action applies it.
+6. **Runs the full test suite** to check for regressions.
+7. If all tests pass, the action opens a PR and comments on the issue.
+8. If tests fail or the patch cannot be applied, the action comments on the issue with details.
 
 ## Inputs
 
@@ -23,7 +27,8 @@ A GitHub Action that automatically fixes bugs by reading issue context, generati
 | `model` | ❌ | `GPT-5.1-Codex-Max` | OpenAI model to use |
 | `required-label` | ❌ | `autofix` | Only run if the issue has this label |
 | `base-branch` | ❌ | repo default | Base branch for the PR |
-| `test-command` | ❌ | (empty) | Command to run before opening a PR. **Set this to run E2E or unit tests.** |
+| `test-command-specific` | ❌ | (empty) | Fallback command for specific bug test (overridden by issue field) |
+| `test-command-suite` | ❌ | (empty) | Fallback command for full test suite (overridden by issue field) |
 | `max-diff-lines` | ❌ | `800` | Maximum lines allowed in the generated diff |
 
 ## Outputs
@@ -72,7 +77,9 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          test-command: npm test
+          # Test commands can be provided here as fallbacks, but issue fields take priority
+          # test-command-specific: npm run test:specific
+          # test-command-suite: npm test
 ```
 
 ### 2. Add the bug report issue template
@@ -81,7 +88,7 @@ Create `.github/ISSUE_TEMPLATE/bug_report.yml`:
 
 ```yml
 name: Bug report (autofix-ready)
-description: Bug report including user story + test case + bug description
+description: Bug report including user story + test case + bug description + test commands
 labels:
   - bug
 body:
@@ -114,23 +121,25 @@ body:
     validations:
       required: true
 
-  - type: textarea
-    id: automated_test
+  - type: input
+    id: test_command_specific
     attributes:
-      label: Automated test that fails (if exists)
-      description: Include command, test path/name, and failure output
-      placeholder: |
-        Command: npm run e2e:verification -- --grep "TC-1"
-        Test: e2e/verification.spec.ts - "TC-1: ..."
-        Failure: <paste output>
-    validations:
-      required: false
+      label: Test command (specific test for this bug)
+      description: Command to run the specific test. Runs BEFORE fix to capture failure output.
+      placeholder: 'npm run e2e:verification -- --grep "TC-1"'
+
+  - type: input
+    id: test_command_suite
+    attributes:
+      label: Test command (full suite for regression)
+      description: Command to run the full test suite. Runs AFTER fix to check for regressions.
+      placeholder: "npm run e2e"
 
   - type: checkboxes
     id: autofix_gate
     attributes:
       label: Autofix gate
-      description: Add the `autofix` label after filling this out to trigger the action
+      description: Add the `autofix` label after filling this out to trigger the action.
       options:
         - label: I confirm this issue contains enough context for an automated fix
           required: false

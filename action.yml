@@ -22,8 +22,12 @@ inputs:
     description: "Base branch for PR (defaults to repo default branch)"
     required: false
     default: ""
-  test-command:
-    description: "Command to run before opening a PR (leave empty to skip)"
+  test-command-specific:
+    description: "Fallback command for specific bug test (overridden by issue field 'Test command (specific test for this bug)')"
+    required: false
+    default: ""
+  test-command-suite:
+    description: "Fallback command for full test suite (overridden by issue field 'Test command (full suite for regression)')"
     required: false
     default: ""
   max-diff-lines:

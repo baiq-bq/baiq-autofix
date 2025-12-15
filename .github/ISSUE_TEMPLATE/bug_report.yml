@@ -1,5 +1,5 @@
 name: Bug report (autofix-ready)
-description: Bug report including user story + test case + bug description
+description: Bug report including user story + test case + bug description + test commands
 labels:
   - bug
 body:
@@ -34,20 +34,21 @@ body:
     validations:
       required: true
 
-  - type: textarea
-    id: automated_test
+  - type: input
+    id: test_command_specific
     attributes:
-      label: Automated test that fails (if exists)
-      description: Include command, test path/name, and failure output
-      placeholder: |
-        Command:
-        npm run e2e:verification -- --grep "TC-1"
+      label: Test command (specific test for this bug)
+      description: Command to run the specific test that verifies this bug. The action runs this BEFORE generating the fix to capture failure output.
+      placeholder: "npm run e2e:verification -- --grep \"TC-1\""
+    validations:
+      required: false
 
-        Test file/name:
-        e2e/verification.spec.ts - "TC-1: ..."
-
-        Failure output:
-        <paste output>
+  - type: input
+    id: test_command_suite
+    attributes:
+      label: Test command (full suite for regression)
+      description: Command to run the full test suite. The action runs this AFTER applying the fix to check for regressions.
+      placeholder: "npm run e2e"
     validations:
       required: false
 
@@ -55,7 +56,7 @@ body:
     id: autofix_gate
     attributes:
       label: Autofix gate
-      description: Add the `autofix` label after filling this out to trigger the action
+      description: Add the `autofix` label after filling this out to trigger the action.
       options:
         - label: I confirm this issue contains enough context for an automated fix
           required: false

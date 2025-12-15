@@ -98,25 +98,32 @@ async function askForFilesToRead(params: {
   issueTitle: string;
   issueBody: string;
   fileList: string;
+  testFailureOutput?: string;
 }): Promise<string[]> {
   const prompt =
     "You are an assistant that helps fix bugs in a repository based on a GitHub bug report issue. " +
     "The bug report contains: " +
     "(1) a reference to a USER STORY issue describing the requirement, " +
     "(2) a reference to a TEST CASE issue describing preconditions, steps, and expected result, " +
-    "(3) a BUG DESCRIPTION explaining expected vs actual behavior, " +
-    "(4) optionally, automated test failure output. " +
+    "(3) a BUG DESCRIPTION explaining expected vs actual behavior. " +
+    "If automated tests exist, the TEST FAILURE OUTPUT is also provided showing the actual test errors. " +
     "Given the issue and repository file list, choose up to 8 files that are most relevant to inspect for fixing the bug. " +
     "Return ONLY valid JSON of the form: {\"files\":[\"path1\",\"path2\"]}.";
+
+  let input =
+    `Issue title:\n${params.issueTitle}\n\n` +
+    `Issue body:\n${params.issueBody}\n\n` +
+    `Repository file list (git ls-files):\n${params.fileList}`;
+
+  if (params.testFailureOutput) {
+    input += `\n\nTEST FAILURE OUTPUT:\n${params.testFailureOutput}`;
+  }
 
   const text = await generateText({
     client: params.client,
     model: params.model,
     instructions: prompt,
-    input:
-      `Issue title:\n${params.issueTitle}\n\n` +
-      `Issue body:\n${params.issueBody}\n\n` +
-      `Repository file list (git ls-files):\n${params.fileList}`,
+    input,
     temperature: 0,
   });
   let parsed: any;
@@ -142,21 +149,34 @@ async function askForUnifiedDiff(params: {
   issueTitle: string;
   issueBody: string;
   fileContext: string;
+  testFailureOutput?: string;
 }): Promise<string> {
   const system =
-    "You are an expert software engineer. Generate a minimal fix for the bug described. " +
+    "You are an expert software engineer fixing a bug based on a GitHub bug report. " +
+    "The bug report structure is: " +
+    "(1) USER STORY: describes the requirement/feature being tested, " +
+    "(2) TEST CASE: describes preconditions, step-by-step actions, and expected result, " +
+    "(3) BUG DESCRIPTION: explains expected vs actual behavior (the bug). " +
+    "If automated tests exist, the TEST FAILURE OUTPUT shows the actual test errors that need to be fixed. " +
+    "Your task: generate a minimal fix so the actual behavior matches the expected behavior from the test case. " +
     "Return ONLY a unified diff that can be applied with `git apply`. " +
     "Do not include explanations, markdown fences, or extra text. " +
     "Do not modify lockfiles (package-lock.json, pnpm-lock.yaml, yarn.lock) or .github/workflows/*.";
+
+  let input =
+    `Issue title:\n${params.issueTitle}\n\n` +
+    `Issue body:\n${params.issueBody}\n\n` +
+    `Repository context (selected file contents):\n${params.fileContext}`;
+
+  if (params.testFailureOutput) {
+    input += `\n\nTEST FAILURE OUTPUT:\n${params.testFailureOutput}`;
+  }
 
   const text = await generateText({
     client: params.client,
     model: params.model,
     instructions: system,
-    input:
-      `Issue title:\n${params.issueTitle}\n\n` +
-      `Issue body:\n${params.issueBody}\n\n` +
-      `Repository context (selected file contents):\n${params.fileContext}`,
+    input,
     temperature: 0,
   });
 
@@ -169,7 +189,8 @@ async function run(): Promise<void> {
   const model = core.getInput("model") || "GPT-5.1-Codex-Max";
   const requiredLabel = core.getInput("required-label") || "autofix";
   const baseBranchInput = core.getInput("base-branch") || "";
-  const testCommand = core.getInput("test-command") || "";
+  const testCommandSpecificFallback = core.getInput("test-command-specific") || "";
+  const testCommandSuiteFallback = core.getInput("test-command-suite") || "";
   const maxDiffLines = Number(core.getInput("max-diff-lines") || "800");
 
   let owner: string | undefined;
@@ -217,6 +238,14 @@ async function run(): Promise<void> {
       extractIssueFormFieldValue(issueBody, "Test case issue (reference)") ??
       extractIssueFormFieldValue(issueBody, "Test case issue") ??
       "";
+
+    // Extract test commands from issue body, fallback to action inputs
+    const testCommandSpecific =
+      extractIssueFormFieldValue(issueBody, "Test command (specific test for this bug)") ||
+      testCommandSpecificFallback;
+    const testCommandSuite =
+      extractIssueFormFieldValue(issueBody, "Test command (full suite for regression)") ||
+      testCommandSuiteFallback;
 
     const userStoryRef = parseGitHubIssueRef({
       input: userStoryRefRaw,
@@ -284,6 +313,21 @@ async function run(): Promise<void> {
     const fileListRaw = exec("git ls-files", { silent: true }).stdout;
     const fileList = truncate(fileListRaw, 120_000);
 
+    // Run SPECIFIC test BEFORE generating the fix to capture failure output for the prompt
+    let testFailureOutput: string | undefined;
+    if (testCommandSpecific.trim()) {
+      core.info(`Running specific test to capture failure output: ${testCommandSpecific}`);
+      const preTestRes = exec(testCommandSpecific, { silent: true });
+      if (preTestRes.exitCode !== 0) {
+        testFailureOutput = truncate((preTestRes.stdout + "\n" + preTestRes.stderr).trim(), 15_000);
+        core.info("Specific test failed (expected for bug). Including failure output in prompt context.");
+      } else {
+        core.info("Specific test passed before fix - no failure output to include.");
+      }
+    } else {
+      core.info("No specific test command provided; skipping pre-fix test.");
+    }
+
     const client = new OpenAI({ apiKey: openaiApiKey });
 
     core.info("Selecting files to read...");
@@ -293,6 +337,7 @@ async function run(): Promise<void> {
       issueTitle,
       issueBody: issueBodyForPrompt,
       fileList,
+      testFailureOutput,
     });
 
     if (filesToRead.length === 0) {
@@ -320,6 +365,7 @@ async function run(): Promise<void> {
       issueTitle,
       issueBody: issueBodyForPrompt,
       fileContext,
+      testFailureOutput,
     });
 
     const diff = extractDiffOnlyFromModel(modelOutput);
@@ -369,24 +415,26 @@ async function run(): Promise<void> {
       return;
     }
 
-    if (testCommand.trim()) {
-      core.info(`Running tests: ${testCommand}`);
-      const testRes = exec(testCommand, { silent: true });
+    // Run FULL TEST SUITE after applying fix to check for regressions
+    if (testCommandSuite.trim()) {
+      core.info(`Running full test suite for regression check: ${testCommandSuite}`);
+      const testRes = exec(testCommandSuite, { silent: true });
       if (testRes.exitCode !== 0) {
         await octokit.rest.issues.createComment({
           owner,
           repo,
           issue_number: issueNumber,
           body:
-            "I generated a patch and applied it locally, but tests failed so I did not open a PR.\n\n" +
+            "I generated a patch and applied it locally, but the full test suite failed (regression detected). PR not opened.\n\n" +
             "Test output:\n" +
             `\n\n\`\`\`\n${truncate((testRes.stdout + "\n" + testRes.stderr).trim(), 8000)}\n\`\`\`\n`,
         });
-        core.setFailed("Tests failed; PR not opened.");
+        core.setFailed("Full test suite failed (regression); PR not opened.");
         return;
       }
+      core.info("Full test suite passed - no regressions detected.");
     } else {
-      core.info("No test-command provided; skipping tests.");
+      core.info("No full test suite command provided; proceeding to open PR.");
     }
 
     core.info("Committing changes...");

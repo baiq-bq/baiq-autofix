@@ -322,7 +322,8 @@ A **bug report** is created when executing a test case produces a **failure** (a
 - **User story reference** (requirement context)
 - **Test case reference** (which TC failed)
 - **Bug description** (expected vs actual result explanation)
-- **E2E failure output** (automated test error, if exists)
+- **Specific test command** (runs BEFORE fix to capture failure output)
+- **Full test suite command** (runs AFTER fix to check for regressions)
 
 Create **4 bug report issues** using the repo's **Bug report (autofix-ready)** template.
 
@@ -347,13 +348,8 @@ Actual: Error appears on "Start date" field instead of "End date"
 The date range validation correctly detects invalid ranges, but shows the error on the wrong field.
 ```
 
-- **Automated test that fails (if exists):**
-
-```
-Command: npm run e2e:verification -- --grep "TC-1"
-Test: e2e/verification.spec.ts - "TC-1: invalid date range shows endDate error"
-Failure: expect(getByTestId('error-endDate')).toBeVisible() - received hidden
-```
+- **Test command (specific):** `npm run e2e:verification -- --grep "TC-1"`
+- **Test command (suite):** `npm run e2e`
 
 ---
 
@@ -374,13 +370,8 @@ Actual: No validation error for billingPostalCode; form accepts empty value
 The validation for billing fields is missing the postal code check.
 ```
 
-- **Automated test that fails (if exists):**
-
-```
-Command: npm run e2e:verification -- --grep "TC-2"
-Test: e2e/verification.spec.ts - "TC-2: billingPostalCode is required when needsInvoice"
-Failure: expect(getByTestId('error-billingPostalCode')).toBeVisible() - received hidden
-```
+- **Test command (specific):** `npm run e2e:verification -- --grep "TC-2"`
+- **Test command (suite):** `npm run e2e`
 
 ---
 
@@ -401,13 +392,8 @@ Actual: VAT NOT required for EU countries, but required for non-EU (logic is inv
 The condition checking for EU countries is negated incorrectly.
 ```
 
-- **Automated test that fails (if exists):**
-
-```
-Command: npm run e2e:verification -- --grep "TC-3"
-Test: e2e/verification.spec.ts - "TC-3: business + EU country requires VAT"
-Failure: expect(getByTestId('error-vatNumber')).toBeVisible() - received hidden
-```
+- **Test command (specific):** `npm run e2e:verification -- --grep "TC-3"`
+- **Test command (suite):** `npm run e2e`
 
 ---
 
@@ -428,13 +414,8 @@ Actual: Final price is 21890 cents (19900 * 1.1) - adds 10% instead of subtracti
 The discount calculation multiplies by 1.1 instead of 0.9.
 ```
 
-- **Automated test that fails (if exists):**
-
-```
-Command: npm run e2e:verification -- --grep "TC-4"
-Test: e2e/verification.spec.ts - "TC-4: SAVE10 applies 10% discount"
-Failure: expect(getByTestId('result-final-price')).toContainText('17910') - received "21890"
-```
+- **Test command (specific):** `npm run e2e:verification -- --grep "TC-4"`
+- **Test command (suite):** `npm run e2e`
 
 ---
 
@@ -443,11 +424,13 @@ Failure: expect(getByTestId('result-final-price')).toContainText('17910') - rece
 1. Create the issues above in order (user story → test cases → bug reports).
 2. Add the `autofix` label to a bug report issue.
 3. The action will:
-   - Read the issue body.
+   - Read the issue body and extract test commands.
    - Fetch the linked user story and test case issues.
+   - **Run the specific test FIRST** to capture failure output for the AI.
    - Generate a patch using OpenAI.
-   - Apply the patch and run `test-command` (E2E tests if configured).
-   - If tests pass, open a PR and comment on the issue.
+   - Apply the patch.
+   - **Run the full test suite** to check for regressions.
+   - If all tests pass, open a PR and comment on the issue.
    - If tests fail, comment on the issue with the failure output.
 
 ---
