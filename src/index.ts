@@ -4,6 +4,7 @@ import { execSync, spawnSync } from "child_process";
 import * as os from "os";
 import * as path from "path";
 import * as fs from "fs";
+import OpenAI from "openai";
 
 import { extractIssueFormFieldValue, parseGitHubIssueRef, truncate } from "./lib";
 
@@ -161,6 +162,58 @@ function buildAiderPrompt(params: {
   return prompt;
 }
 
+async function generatePRDescription(params: {
+  issueTitle: string;
+  issueBody: string;
+  changedFiles: { path: string; content: string }[];
+  diff: string;
+  openaiApiKey: string;
+  model: string;
+}): Promise<string> {
+  const openai = new OpenAI({ apiKey: params.openaiApiKey });
+
+  const filesContent = params.changedFiles.map((f) => `=== FILE: ${f.path} ===\n${f.content}`).join("\n\n");
+
+  const prompt = `You are a senior software engineer writing a pull request description for a bug fix.
+
+BUG REPORT:
+Title: ${params.issueTitle}
+
+${params.issueBody}
+
+CHANGED FILES CONTENT:
+${truncate(filesContent, 50_000)}
+
+DIFF:
+${truncate(params.diff, 30_000)}
+
+Write a clear and concise PR description with the following sections:
+1. **Bug Description**: What was the bug? What was the expected vs actual behavior?
+2. **Root Cause**: What was causing this bug in the code?
+3. **Solution**: What changes were made and why?
+4. **How It Fixes the Bug**: Explain how these specific changes resolve the issue.
+
+Keep each section brief but informative. Use markdown formatting.`;
+
+  core.info("Generating PR description using OpenAI...");
+
+  const response = await openai.chat.completions.create({
+    model: params.model,
+    messages: [{ role: "user", content: prompt }],
+    max_tokens: 2000,
+    temperature: 0.3,
+  });
+
+  const description = response.choices[0]?.message?.content?.trim() || "";
+  if (!description) {
+    core.warning("OpenAI returned empty description, using default.");
+    return "";
+  }
+
+  core.info("PR description generated successfully.");
+  return description;
+}
+
 async function run(): Promise<void> {
   const ghToken = core.getInput("github-token", { required: true });
   const openaiApiKey = core.getInput("openai-api-key") || "";
@@ -174,6 +227,8 @@ async function run(): Promise<void> {
   const workingDirectoryInput = core.getInput("working-directory") || "";
   const retryMaxParsed = parseInt(core.getInput("retry-max") || "3", 10);
   const retryMax = Number.isNaN(retryMaxParsed) ? 3 : Math.max(1, retryMaxParsed);
+  const addDescription = core.getInput("add-description") !== "false";
+  const descriptionModel = core.getInput("description-model") || "gpt-4o";
 
   // Validate at least one API key is provided
   if (!openaiApiKey.trim() && !anthropicApiKey.trim()) {
@@ -439,12 +494,50 @@ async function run(): Promise<void> {
       return;
     }
 
+    // Get changed files list and diff before committing
+    const changedFilesList = exec("git diff --name-only", { silent: true }).stdout.trim().split("\n").filter(Boolean);
+    const diff = exec("git diff", { silent: true }).stdout;
+
+    // Read content of changed files
+    const changedFiles: { path: string; content: string }[] = [];
+    for (const filePath of changedFilesList) {
+      try {
+        const fullPath = path.join(repoRoot, filePath);
+        const content = fs.readFileSync(fullPath, "utf8");
+        changedFiles.push({ path: filePath, content: truncate(content, 20_000) });
+      } catch {
+        core.warning(`Could not read changed file: ${filePath}`);
+      }
+    }
+
     core.info("Committing changes...");
     exec('git config user.name "github-actions[bot]"');
     exec('git config user.email "41898282+github-actions[bot]@users.noreply.github.com"');
 
     exec("git add -A");
     exec(`git commit -m ${shellEscape(`Fix: issue #${issueNumber}`)}`);
+
+    // Generate PR description using OpenAI if enabled
+    let prBody = `Automated fix for issue #${issueNumber} using Aider.\n\nCloses #${issueNumber}.`;
+    if (addDescription && openaiApiKey.trim()) {
+      try {
+        const generatedDescription = await generatePRDescription({
+          issueTitle,
+          issueBody: issueBodyForPrompt,
+          changedFiles,
+          diff,
+          openaiApiKey,
+          model: descriptionModel,
+        });
+        if (generatedDescription) {
+          prBody = `${generatedDescription}\n\n---\n\nCloses #${issueNumber}.`;
+        }
+      } catch (e) {
+        core.warning(`Failed to generate PR description: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    } else if (addDescription && !openaiApiKey.trim()) {
+      core.warning("PR description generation requires OpenAI API key. Using default description.");
+    }
 
     core.info("Pushing branch...");
     exec(`git push --set-upstream origin ${shellEscape(branchName)}`);
@@ -459,7 +552,7 @@ async function run(): Promise<void> {
           title: `Fix: ${issueTitle}`.slice(0, 240),
           head: branchName,
           base: baseBranch,
-          body: `Automated fix for issue #${issueNumber} using Aider.\n\nCloses #${issueNumber}.`,
+          body: prBody,
         });
         break;
       } catch (e) {

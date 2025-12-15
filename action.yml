@@ -47,6 +47,14 @@ inputs:
     description: "Maximum number of retries when tests fail after Aider fix (default 3)"
     required: false
     default: "3"
+  add-description:
+    description: "Generate AI-powered PR description explaining the bug and fix (default true)"
+    required: false
+    default: "true"
+  description-model:
+    description: "OpenAI model to use for generating PR description (default gpt-4o)"
+    required: false
+    default: "gpt-4o"
 
 outputs:
   pr-url:
