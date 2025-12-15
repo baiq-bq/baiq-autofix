@@ -430,8 +430,32 @@ async function run() {
                 }
                 core.info("Full test suite passed - no regressions detected.");
             }
+            else if (testCommandSpecific.trim()) {
+                // No full test suite, but specific test is available - run it to verify the fix
+                core.info(`No full test suite; running specific test to verify fix: ${testCommandSpecific}`);
+                const testRes = exec(testCommandSpecific, { silent: true, cwd: workingDirectory });
+                if (testRes.exitCode !== 0) {
+                    const testOutput = (0, lib_1.truncate)((testRes.stdout + "\n" + testRes.stderr).trim(), 10_000);
+                    if (attempt === retryMax - 1) {
+                        await octokit.rest.issues.createComment({
+                            owner,
+                            repo,
+                            issue_number: issueNumber,
+                            body: `Aider generated a fix, but the specific test still failed after ${retryMax} attempt(s). PR not opened.\n\n` +
+                                "Test output:\n" +
+                                `\n\n\`\`\`\n${(0, lib_1.truncate)(testOutput, 8000)}\n\`\`\`\n`,
+                        });
+                        core.setFailed(`Specific test failed after ${retryMax} attempt(s); PR not opened.`);
+                        return;
+                    }
+                    core.warning(`Specific test failed (attempt ${attempt + 1}/${retryMax}), will retry with failure info...`);
+                    previousTestFailure = testOutput;
+                    continue;
+                }
+                core.info("Specific test passed - fix verified.");
+            }
             else {
-                core.info("No full test suite command provided; proceeding to open PR.");
+                core.info("No test commands provided; proceeding to open PR.");
             }
             // If we reach here, fix succeeded
             fixSucceeded = true;

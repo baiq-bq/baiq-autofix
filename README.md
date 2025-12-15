@@ -15,7 +15,7 @@ A GitHub Action that automatically fixes bugs using [Aider](https://github.com/p
 3. It fetches the referenced issues and includes them as context.
 4. **Runs the specific test FIRST** to capture failure output — this gives the AI model the actual test errors.
 5. **Aider analyzes the entire codebase** and makes the necessary fixes directly.
-6. **Runs the full test suite** to check for regressions.
+6. **Runs tests** after the fix: full test suite if provided, otherwise the specific test to verify the fix.
 7. **If tests fail, retries** with failure info added to the prompt (up to `retry-max` attempts).
 8. **Generates a PR description** using OpenAI (if `add-description` is enabled) explaining the bug, root cause, and fix.
 9. If all tests pass, the action opens a PR and comments on the issue.
