@@ -317,7 +317,13 @@ async function run() {
             fileContext,
             testFailureOutput,
         });
+        core.info("=== RAW MODEL OUTPUT (first 2000 chars) ===");
+        core.info(modelOutput.slice(0, 2000));
+        core.info("=== END RAW MODEL OUTPUT ===");
         const diff = (0, lib_1.extractDiffOnly)(modelOutput);
+        core.info("=== EXTRACTED DIFF (first 2000 chars) ===");
+        core.info(diff.slice(0, 2000));
+        core.info("=== END EXTRACTED DIFF ===");
         (0, lib_1.validateDiff)(diff);
         const diffLines = (0, lib_1.countLines)(diff);
         if (diffLines > maxDiffLines) {
@@ -498,12 +504,31 @@ function countLines(s) {
     return s.split(/\r?\n/).length;
 }
 function extractDiffOnly(text) {
-    const trimmed = text.trim();
+    let trimmed = text.trim();
+    // Strip markdown code fences if present (```diff ... ``` or ``` ... ```)
+    const fenceMatch = trimmed.match(/^```(?:diff)?\s*\n([\s\S]*?)\n```\s*$/);
+    if (fenceMatch) {
+        trimmed = fenceMatch[1].trim();
+    }
+    // Also handle case where fence is at start but content continues after
+    if (trimmed.startsWith("```")) {
+        const endFence = trimmed.indexOf("```", 3);
+        if (endFence > 0) {
+            const firstNewline = trimmed.indexOf("\n");
+            if (firstNewline > 0 && firstNewline < endFence) {
+                trimmed = trimmed.slice(firstNewline + 1, endFence).trim();
+            }
+        }
+    }
     if (trimmed.startsWith("diff --git") || trimmed.startsWith("---"))
         return trimmed;
     const idx = trimmed.indexOf("diff --git");
     if (idx >= 0)
         return trimmed.slice(idx).trim();
+    // Also try finding --- a/ pattern for diffs without the git header
+    const dashIdx = trimmed.indexOf("--- a/");
+    if (dashIdx >= 0)
+        return trimmed.slice(dashIdx).trim();
     throw new Error("Model did not return a unified diff.");
 }
 function validateDiff(diff) {

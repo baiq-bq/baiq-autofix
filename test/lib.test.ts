@@ -50,6 +50,19 @@ test("extractDiffOnly throws when no diff exists", () => {
   assert.throws(() => extractDiffOnly("nope"));
 });
 
+test("extractDiffOnly strips markdown code fences", () => {
+  const text = "```diff\ndiff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@\n```";
+  const diff = extractDiffOnly(text);
+  assert.ok(diff.startsWith("diff --git"));
+  assert.ok(!diff.includes("```"));
+});
+
+test("extractDiffOnly handles --- a/ format without git header", () => {
+  const text = "Here is the fix:\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,3 @@\n";
+  const diff = extractDiffOnly(text);
+  assert.ok(diff.startsWith("--- a/file.ts"));
+});
+
 test("validateDiff rejects lockfile changes", () => {
   const diff =
     "diff --git a/package-lock.json b/package-lock.json\n--- a/package-lock.json\n+++ b/package-lock.json\n@@\n";

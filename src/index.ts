@@ -364,7 +364,16 @@ async function run(): Promise<void> {
       testFailureOutput,
     });
 
+    core.info("=== RAW MODEL OUTPUT (first 2000 chars) ===");
+    core.info(modelOutput.slice(0, 2000));
+    core.info("=== END RAW MODEL OUTPUT ===");
+
     const diff = extractDiffOnlyFromModel(modelOutput);
+    
+    core.info("=== EXTRACTED DIFF (first 2000 chars) ===");
+    core.info(diff.slice(0, 2000));
+    core.info("=== END EXTRACTED DIFF ===");
+
     validateDiff(diff);
 
     const diffLines = countLines(diff);
