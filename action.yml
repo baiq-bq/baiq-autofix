@@ -13,7 +13,7 @@ inputs:
   model:
     description: "OpenAI model to use"
     required: false
-    default: "GPT-5.1-Codex-Max"
+    default: "gpt-5.1-codex-max"
   required-label:
     description: "Only run if the issue has this label"
     required: false

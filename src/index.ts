@@ -188,7 +188,7 @@ async function askForUnifiedDiff(params: {
 async function run(): Promise<void> {
   const ghToken = core.getInput("github-token", { required: true });
   const openaiApiKey = core.getInput("openai-api-key", { required: true });
-  const model = core.getInput("model") || "GPT-5.1-Codex-Max";
+  const model = core.getInput("model") || "gpt-5.1-codex-max";
   const requiredLabel = core.getInput("required-label") || "autofix";
   const baseBranchInput = core.getInput("base-branch") || "";
   const testCommandSpecificFallback = core.getInput("test-command-specific") || "";

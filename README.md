@@ -24,7 +24,7 @@ A GitHub Action that automatically fixes bugs by reading issue context, generati
 |-------|----------|---------|-------------|
 | `github-token` | ✅ | — | GitHub token (use `secrets.GITHUB_TOKEN`) |
 | `openai-api-key` | ✅ | — | OpenAI API key |
-| `model` | ❌ | `GPT-5.1-Codex-Max` | OpenAI model to use |
+| `model` | ❌ | `gpt-5.1-codex-max` | OpenAI model to use |
 | `required-label` | ❌ | `autofix` | Only run if the issue has this label |
 | `base-branch` | ❌ | repo default | Base branch for the PR |
 | `test-command-specific` | ❌ | (empty) | Fallback command for specific bug test (overridden by issue field) |
