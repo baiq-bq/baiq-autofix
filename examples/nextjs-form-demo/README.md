@@ -170,14 +170,10 @@ Create **4 test case issues**, one for each bug. These describe the manual test 
 
 ---
 
-#### TC-1: Date range validation
-
 **Title:**
-
 ```
-TC-1: Date range validation
+## TC-1: Date range validation
 ```
-
 **Body:**
 
 ```markdown
