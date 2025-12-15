@@ -1,6 +1,7 @@
 name: "Autofix Demo (issues -> PR)"
 
 on:
+  workflow_dispatch:
   issues:
     types: [opened, labeled]
 
