@@ -393,24 +393,44 @@ async function run(): Promise<void> {
     exec(`git push --set-upstream origin ${shellEscape(branchName)}`);
 
     core.info("Creating PR...");
-    const pr = await octokit.rest.pulls.create({
-      owner,
-      repo,
-      title: `Fix: ${issueTitle}`.slice(0, 240),
-      head: branchName,
-      base: baseBranch,
-      body: `Automated fix for issue #${issueNumber} using Aider.\n\nCloses #${issueNumber}.`,
-    });
+    let pr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        pr = await octokit.rest.pulls.create({
+          owner,
+          repo,
+          title: `Fix: ${issueTitle}`.slice(0, 240),
+          head: branchName,
+          base: baseBranch,
+          body: `Automated fix for issue #${issueNumber} using Aider.\n\nCloses #${issueNumber}.`,
+        });
+        break;
+      } catch (e) {
+        if (attempt === 2) throw e;
+        core.warning(`PR creation failed (attempt ${attempt + 1}/3), retrying in 2s...`);
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+
+    if (!pr) throw new Error("Failed to create PR after 3 attempts");
 
     const prUrl = pr.data.html_url;
     core.setOutput("pr-url", prUrl);
 
-    await octokit.rest.issues.createComment({
-      owner,
-      repo,
-      issue_number: issueNumber,
-      body: `I opened a PR for this issue: ${prUrl}`,
-    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await octokit.rest.issues.createComment({
+          owner,
+          repo,
+          issue_number: issueNumber,
+          body: `I opened a PR for this issue: ${prUrl}`,
+        });
+        break;
+      } catch (e) {
+        if (attempt === 2) core.warning(`Failed to comment on issue: ${e}`);
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
   } catch (err) {
     if (octokit && owner && repo && issueNumber) {
       try {
