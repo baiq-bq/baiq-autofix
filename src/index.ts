@@ -48,7 +48,8 @@ function installAider(version: string): void {
 
 function runAider(params: {
   prompt: string;
-  workingDirectory: string;
+  repoRoot: string;
+  workingDirectory?: string;
   openaiApiKey?: string;
   anthropicApiKey?: string;
   model: string;
@@ -72,9 +73,17 @@ function runAider(params: {
   // Build aider command arguments
   // --yes-always: auto-accept all confirmations including adding files (non-interactive)
   // --no-auto-commits: don't auto-commit changes (we handle git ourselves)
+  // --subtree-only: limit to working directory if specified
   // --model: specify the model
   // --message-file: read prompt from file
-  const args = ["--yes-always", "--no-auto-commits", "--model", params.model, "--message-file", promptFile];
+  const args = ["--yes-always", "--no-auto-commits"];
+
+  // If working directory is a subdirectory, use --subtree-only to limit scope
+  if (params.workingDirectory && params.workingDirectory !== params.repoRoot) {
+    args.push("--subtree-only");
+  }
+
+  args.push("--model", params.model, "--message-file", promptFile);
 
   core.info("Running Aider...");
   core.info(`aider ${args.slice(0, -2).join(" ")} --message-file <prompt>`);
@@ -88,8 +97,11 @@ function runAider(params: {
     env.ANTHROPIC_API_KEY = params.anthropicApiKey;
   }
 
+  // Run from working directory if specified, otherwise repo root
+  const cwd = params.workingDirectory || params.repoRoot;
+
   const result = spawnSync("aider", args, {
-    cwd: params.workingDirectory,
+    cwd,
     encoding: "utf8",
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -305,7 +317,8 @@ async function run(): Promise<void> {
     // Run Aider - it will modify files directly
     const aiderResult = runAider({
       prompt,
-      workingDirectory,
+      repoRoot,
+      workingDirectory: workingDirectory !== repoRoot ? workingDirectory : undefined,
       openaiApiKey: openaiApiKey || undefined,
       anthropicApiKey: anthropicApiKey || undefined,
       model,
