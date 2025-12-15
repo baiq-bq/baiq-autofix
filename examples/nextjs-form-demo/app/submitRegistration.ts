@@ -11,9 +11,14 @@ export async function submitRegistrationAction(_prev: ActionState, formData: For
   const parsed = parseAndValidateRegistration(formData);
 
   if (!parsed.ok) {
+    const errors = parsed.errors;
+    if (errors.startDate && errors.startDate.includes("must be on or after")) {
+      errors.endDate = errors.startDate;
+      delete errors.startDate;
+    }
     return {
       ok: false,
-      errors: parsed.errors,
+      errors: errors,
     };
   }
 
