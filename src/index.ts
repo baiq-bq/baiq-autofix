@@ -49,7 +49,7 @@ function runCodexExec(params: {
   openaiApiKey: string;
   model?: string;
 }): ExecResult {
-  const args = ["exec", "--full-auto"];
+  const args = ["--config", "preferred_auth_method=apikey", "exec", "--full-auto"];
 
   if (params.model) {
     args.push("--model", params.model);

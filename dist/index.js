@@ -78,7 +78,7 @@ function installCodexCli(version) {
     core.info("Codex CLI installed successfully.");
 }
 function runCodexExec(params) {
-    const args = ["exec", "--full-auto"];
+    const args = ["--config", "preferred_auth_method=apikey", "exec", "--full-auto"];
     if (params.model) {
         args.push("--model", params.model);
     }
@@ -216,9 +216,7 @@ async function run() {
         // Priority: issue branch field > action input > repo default
         const baseBranch = issueBranch.trim() || baseBranchInput.trim() || defaultBranch;
         const repoRoot = process.cwd();
-        const workingDirectory = workingDirectoryInput.trim()
-            ? `${repoRoot}/${workingDirectoryInput.trim()}`
-            : repoRoot;
+        const workingDirectory = workingDirectoryInput.trim() ? `${repoRoot}/${workingDirectoryInput.trim()}` : repoRoot;
         // Run SPECIFIC test BEFORE generating the fix to capture failure output for the prompt
         let testFailureOutput;
         if (testCommandSpecific.trim()) {
