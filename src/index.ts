@@ -51,7 +51,6 @@ async function generateText(params: {
   model: string;
   instructions: string;
   input: string;
-  temperature?: number;
   maxRetries?: number;
 }): Promise<string> {
   const maxRetries = params.maxRetries ?? 3;
@@ -63,7 +62,6 @@ async function generateText(params: {
         model: params.model,
         instructions: params.instructions,
         input: params.input,
-        temperature: params.temperature,
       });
 
       const text = res.output_text;
@@ -126,7 +124,6 @@ async function askForFilesToRead(params: {
     model: params.model,
     instructions: prompt,
     input,
-    temperature: 0,
   });
   let parsed: any;
   try {
@@ -179,7 +176,6 @@ async function askForUnifiedDiff(params: {
     model: params.model,
     instructions: system,
     input,
-    temperature: 0,
   });
 
   return text.trim();

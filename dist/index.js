@@ -84,7 +84,6 @@ async function generateText(params) {
                 model: params.model,
                 instructions: params.instructions,
                 input: params.input,
-                temperature: params.temperature,
             });
             const text = res.output_text;
             if (typeof text === "string" && text.trim())
@@ -128,7 +127,6 @@ async function askForFilesToRead(params) {
         model: params.model,
         instructions: prompt,
         input,
-        temperature: 0,
     });
     let parsed;
     try {
@@ -169,7 +167,6 @@ async function askForUnifiedDiff(params) {
         model: params.model,
         instructions: system,
         input,
-        temperature: 0,
     });
     return text.trim();
 }
