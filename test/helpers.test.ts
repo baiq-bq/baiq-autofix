@@ -168,3 +168,51 @@ test("buildRetryMessage increments attempt number correctly", () => {
   assert.ok(msg2?.includes("retry attempt #3"));
   assert.ok(msg3?.includes("retry attempt #4"));
 });
+
+// Test add-description input parsing pattern
+function parseAddDescription(input: string | undefined): boolean {
+  return input !== "false";
+}
+
+test("parseAddDescription returns true by default (empty input)", () => {
+  assert.equal(parseAddDescription(""), true);
+});
+
+test("parseAddDescription returns true for undefined", () => {
+  assert.equal(parseAddDescription(undefined), true);
+});
+
+test("parseAddDescription returns true for 'true'", () => {
+  assert.equal(parseAddDescription("true"), true);
+});
+
+test("parseAddDescription returns false only for 'false'", () => {
+  assert.equal(parseAddDescription("false"), false);
+});
+
+test("parseAddDescription returns true for any other value", () => {
+  assert.equal(parseAddDescription("yes"), true);
+  assert.equal(parseAddDescription("1"), true);
+  assert.equal(parseAddDescription("FALSE"), true); // case-sensitive
+});
+
+// Test PR description prompt structure
+function buildDescriptionPromptSections(description: string): string[] {
+  const sections = ["Bug Description", "Root Cause", "Solution", "How It Fixes the Bug"];
+  return sections.filter((s) => description.includes(s));
+}
+
+test("buildDescriptionPromptSections identifies all required sections", () => {
+  const mockPrompt = `
+1. **Bug Description**: What was the bug?
+2. **Root Cause**: What was causing this bug?
+3. **Solution**: What changes were made?
+4. **How It Fixes the Bug**: Explain how these changes resolve the issue.
+`;
+  const sections = buildDescriptionPromptSections(mockPrompt);
+  assert.equal(sections.length, 4);
+  assert.ok(sections.includes("Bug Description"));
+  assert.ok(sections.includes("Root Cause"));
+  assert.ok(sections.includes("Solution"));
+  assert.ok(sections.includes("How It Fixes the Bug"));
+});

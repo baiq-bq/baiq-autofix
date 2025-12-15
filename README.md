@@ -17,8 +17,9 @@ A GitHub Action that automatically fixes bugs using [Aider](https://github.com/p
 5. **Aider analyzes the entire codebase** and makes the necessary fixes directly.
 6. **Runs the full test suite** to check for regressions.
 7. **If tests fail, retries** with failure info added to the prompt (up to `retry-max` attempts).
-8. If all tests pass, the action opens a PR and comments on the issue.
-9. If tests fail after all retries, the action comments on the issue with details.
+8. **Generates a PR description** using OpenAI (if `add-description` is enabled) explaining the bug, root cause, and fix.
+9. If all tests pass, the action opens a PR and comments on the issue.
+10. If tests fail after all retries, the action comments on the issue with details.
 
 ## Inputs
 
@@ -35,6 +36,8 @@ A GitHub Action that automatically fixes bugs using [Aider](https://github.com/p
 | `aider-version` | ❌ | (latest) | Version of `aider-chat` to install |
 | `working-directory` | ❌ | (repo root) | Working directory for test commands and Aider |
 | `retry-max` | ❌ | `3` | Maximum retries when tests fail after Aider fix |
+| `add-description` | ❌ | `true` | Generate AI-powered PR description explaining the bug and fix |
+| `description-model` | ❌ | `gpt-4o` | OpenAI model used for generating PR description |
 
 > ⚠️ At least one of `openai-api-key` or `anthropic-api-key` must be provided.
 
