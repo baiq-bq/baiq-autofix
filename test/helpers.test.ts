@@ -68,3 +68,33 @@ test("isRetryableError returns false for non-retryable errors", () => {
   assert.equal(isRetryableError("Invalid API key"), false);
   assert.equal(isRetryableError("Model not found"), false);
 });
+
+// Test API key validation pattern (used in runCodexExec)
+function isValidApiKey(apiKey: string | undefined | null): boolean {
+  return !!apiKey && apiKey.trim() !== "";
+}
+
+test("isValidApiKey returns false for empty string", () => {
+  assert.equal(isValidApiKey(""), false);
+});
+
+test("isValidApiKey returns false for whitespace-only string", () => {
+  assert.equal(isValidApiKey("   "), false);
+});
+
+test("isValidApiKey returns false for undefined", () => {
+  assert.equal(isValidApiKey(undefined), false);
+});
+
+test("isValidApiKey returns false for null", () => {
+  assert.equal(isValidApiKey(null), false);
+});
+
+test("isValidApiKey returns true for valid API key", () => {
+  assert.equal(isValidApiKey("sk-test-key-123"), true);
+});
+
+test("isValidApiKey returns true for key with leading/trailing spaces", () => {
+  // The key itself is valid, trim is just for empty check
+  assert.equal(isValidApiKey(" sk-test-key "), true);
+});
