@@ -95,11 +95,11 @@ function runAider(params) {
     const promptFile = path.join(os.tmpdir(), `aider-prompt-${Date.now()}.txt`);
     fs.writeFileSync(promptFile, params.prompt, "utf8");
     // Build aider command arguments
-    // --yes: auto-accept all confirmations including adding files (non-interactive)
+    // --yes-always: auto-accept all confirmations including adding files (non-interactive)
     // --no-auto-commits: don't auto-commit changes (we handle git ourselves)
     // --model: specify the model
     // --message-file: read prompt from file
-    const args = ["--yes", "--no-auto-commits", "--model", params.model, "--message-file", promptFile];
+    const args = ["--yes-always", "--no-auto-commits", "--model", params.model, "--message-file", promptFile];
     core.info("Running Aider...");
     core.info(`aider ${args.slice(0, -2).join(" ")} --message-file <prompt>`);
     // Build environment with API keys
