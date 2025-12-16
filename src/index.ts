@@ -1,129 +1,15 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { execSync, spawnSync } from "child_process";
-import * as os from "os";
 import * as path from "path";
 import * as fs from "fs";
 import OpenAI from "openai";
 
 import { extractIssueFormFieldValue, parseGitHubIssueRef, truncate } from "./lib";
+import { exec, shellEscape } from "./utils";
+import { getAgent, isValidAgentType, DEFAULT_CODEX_MODEL, DEFAULT_AIDER_MODEL } from "./agents";
+import type { AgentType } from "./agents";
 
-type ExecResult = {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-};
-
-function shellEscape(arg: string): string {
-  return `'${arg.replace(/'/g, "'\\''")}'`;
-}
-
-function exec(cmd: string, opts?: { silent?: boolean; env?: NodeJS.ProcessEnv; cwd?: string }): ExecResult {
-  try {
-    const stdout = execSync(cmd, {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      env: opts?.env ?? process.env,
-      cwd: opts?.cwd,
-    });
-    if (!opts?.silent) core.info(cmd);
-    return { stdout, stderr: "", exitCode: 0 };
-  } catch (err: unknown) {
-    const e = err as { stdout?: Buffer; stderr?: Buffer; message?: string; status?: number };
-    const stdout = e?.stdout?.toString?.() ?? "";
-    const stderr = e?.stderr?.toString?.() ?? e?.message ?? "";
-    if (!opts?.silent) core.info(cmd);
-    return { stdout, stderr, exitCode: e?.status ?? 1 };
-  }
-}
-
-function installAider(version: string): void {
-  core.info(`Installing Aider${version ? ` (version: ${version})` : ""}...`);
-  const pkg = version ? `aider-chat==${version}` : "aider-chat";
-  const res = exec(`pip install ${pkg}`, { silent: true });
-  if (res.exitCode !== 0) {
-    throw new Error(`Failed to install Aider: ${res.stderr || res.stdout}`);
-  }
-  core.info("Aider installed successfully.");
-}
-
-function runAider(params: {
-  prompt: string;
-  repoRoot: string;
-  workingDirectory?: string;
-  openaiApiKey?: string;
-  anthropicApiKey?: string;
-  model: string;
-}): ExecResult {
-  // Validate at least one API key is present
-  const hasOpenAI = params.openaiApiKey && params.openaiApiKey.trim() !== "";
-  const hasAnthropic = params.anthropicApiKey && params.anthropicApiKey.trim() !== "";
-
-  if (!hasOpenAI && !hasAnthropic) {
-    return {
-      stdout: "",
-      stderr: "Error: Neither OPENAI_API_KEY nor ANTHROPIC_API_KEY is provided",
-      exitCode: 1,
-    };
-  }
-
-  // Write prompt to a temp file to avoid shell escaping issues
-  const promptFile = path.join(os.tmpdir(), `aider-prompt-${Date.now()}.txt`);
-  fs.writeFileSync(promptFile, params.prompt, "utf8");
-
-  // Build aider command arguments
-  // --yes-always: auto-accept all confirmations including adding files (non-interactive)
-  // --no-auto-commits: don't auto-commit changes (we handle git ourselves)
-  // --subtree-only: limit to working directory if specified
-  // --model: specify the model
-  // --message-file: read prompt from file
-  const args = ["--yes-always", "--no-auto-commits"];
-
-  // If working directory is a subdirectory, use --subtree-only to limit scope
-  if (params.workingDirectory && params.workingDirectory !== params.repoRoot) {
-    args.push("--subtree-only");
-  }
-
-  args.push("--model", params.model, "--message-file", promptFile);
-
-  core.info("Running Aider...");
-  core.info(`aider ${args.slice(0, -2).join(" ")} --message-file <prompt>`);
-
-  // Build environment with API keys
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  if (hasOpenAI) {
-    env.OPENAI_API_KEY = params.openaiApiKey;
-  }
-  if (hasAnthropic) {
-    env.ANTHROPIC_API_KEY = params.anthropicApiKey;
-  }
-
-  // Run from working directory if specified, otherwise repo root
-  const cwd = params.workingDirectory || params.repoRoot;
-
-  const result = spawnSync("aider", args, {
-    cwd,
-    encoding: "utf8",
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 600_000, // 10 minute timeout
-  });
-
-  // Clean up prompt file
-  try {
-    fs.unlinkSync(promptFile);
-  } catch {
-    // Ignore cleanup errors
-  }
-
-  return {
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-    exitCode: result.status ?? 1,
-  };
-}
-
-function buildAiderPrompt(params: {
+function buildAgentPrompt(params: {
   issueTitle: string;
   issueBody: string;
   testFailureOutput?: string;
@@ -216,23 +102,40 @@ Keep each section brief but informative. Use markdown formatting.`;
 
 async function run(): Promise<void> {
   const ghToken = core.getInput("github-token", { required: true });
+  const agentInput = core.getInput("agent") || "codex";
   const openaiApiKey = core.getInput("openai-api-key") || "";
   const anthropicApiKey = core.getInput("anthropic-api-key") || "";
-  const model = core.getInput("model") || "gpt-4o";
+  const aiderModel = core.getInput("aider-model") || DEFAULT_AIDER_MODEL;
+  const codexModel = core.getInput("codex-model") || DEFAULT_CODEX_MODEL;
   const requiredLabel = core.getInput("required-label") || "autofix";
   const baseBranchInput = core.getInput("base-branch") || "";
   const testCommandSpecificFallback = core.getInput("test-command-specific") || "";
   const testCommandSuiteFallback = core.getInput("test-command-suite") || "";
   const aiderVersion = core.getInput("aider-version") || "";
+  const codexVersion = core.getInput("codex-version") || "";
   const workingDirectoryInput = core.getInput("working-directory") || "";
   const retryMaxParsed = parseInt(core.getInput("retry-max") || "3", 10);
   const retryMax = Number.isNaN(retryMaxParsed) ? 3 : Math.max(1, retryMaxParsed);
   const addDescription = core.getInput("add-description") !== "false";
   const descriptionModel = core.getInput("description-model") || "gpt-4o";
 
-  // Validate at least one API key is provided
-  if (!openaiApiKey.trim() && !anthropicApiKey.trim()) {
-    throw new Error("At least one of openai-api-key or anthropic-api-key must be provided");
+  // Validate agent type
+  if (!isValidAgentType(agentInput)) {
+    throw new Error(`Invalid agent type: ${agentInput}. Must be 'codex' or 'aider'.`);
+  }
+  const agentType: AgentType = agentInput;
+  const agent = getAgent(agentType);
+  const model = agentType === "codex" ? codexModel : aiderModel;
+  const agentVersion = agentType === "codex" ? codexVersion : aiderVersion;
+
+  core.info(`Using agent: ${agentType} with model: ${model}`);
+
+  // Validate API keys based on agent type
+  if (agentType === "codex" && !openaiApiKey.trim()) {
+    throw new Error("openai-api-key is required when using codex agent");
+  }
+  if (agentType === "aider" && !openaiApiKey.trim() && !anthropicApiKey.trim()) {
+    throw new Error("At least one of openai-api-key or anthropic-api-key must be provided when using aider agent");
   }
 
   let owner: string | undefined;
@@ -366,10 +269,10 @@ async function run(): Promise<void> {
       core.info("No specific test command provided; skipping pre-fix test.");
     }
 
-    // Install Aider
-    installAider(aiderVersion);
+    // Install the selected agent
+    agent.install(agentVersion);
 
-    // Checkout base branch and create working branch BEFORE running Aider
+    // Checkout base branch and create working branch BEFORE running agent
     core.info(`Checking out base branch ${baseBranch} and creating working branch...`);
     exec(`git fetch origin ${shellEscape(baseBranch)}`);
     exec(`git checkout ${shellEscape(baseBranch)}`);
@@ -378,7 +281,7 @@ async function run(): Promise<void> {
     const branchName = `qa/issue-${issueNumber}-${Date.now()}`;
     exec(`git checkout -b ${shellEscape(branchName)}`);
 
-    // Retry loop for Aider fix + test validation
+    // Retry loop for agent fix + test validation
     let previousTestFailure: string | undefined;
     let fixSucceeded = false;
 
@@ -390,8 +293,8 @@ async function run(): Promise<void> {
         exec("git clean -fd", { silent: true });
       }
 
-      // Build the prompt for Aider (with retry info if applicable)
-      const prompt = buildAiderPrompt({
+      // Build the prompt for agent (with retry info if applicable)
+      const prompt = buildAgentPrompt({
         issueTitle,
         issueBody: issueBodyForPrompt,
         testFailureOutput,
@@ -399,8 +302,8 @@ async function run(): Promise<void> {
         previousTestFailure,
       });
 
-      // Run Aider - it will modify files directly
-      const aiderResult = runAider({
+      // Run agent - it will modify files directly
+      const agentResult = agent.run({
         prompt,
         repoRoot,
         workingDirectory: workingDirectory !== repoRoot ? workingDirectory : undefined,
@@ -409,34 +312,34 @@ async function run(): Promise<void> {
         model,
       });
 
-      core.info("=== AIDER OUTPUT ===");
-      core.info(truncate(aiderResult.stdout, 4000));
-      if (aiderResult.stderr) {
-        core.info("=== AIDER STDERR ===");
-        core.info(truncate(aiderResult.stderr, 2000));
+      core.info(`=== ${agentType.toUpperCase()} OUTPUT ===`);
+      core.info(truncate(agentResult.stdout, 4000));
+      if (agentResult.stderr) {
+        core.info(`=== ${agentType.toUpperCase()} STDERR ===`);
+        core.info(truncate(agentResult.stderr, 2000));
       }
-      core.info("=== END AIDER OUTPUT ===");
+      core.info(`=== END ${agentType.toUpperCase()} OUTPUT ===`);
 
-      if (aiderResult.exitCode !== 0) {
+      if (agentResult.exitCode !== 0) {
         if (attempt === retryMax - 1) {
           await octokit.rest.issues.createComment({
             owner,
             repo,
             issue_number: issueNumber,
             body:
-              `Aider failed to generate a fix after ${retryMax} attempt(s).\n\n` +
+              `${agentType} failed to generate a fix after ${retryMax} attempt(s).\n\n` +
               "Output:\n" +
-              `\n\n\`\`\`\n${truncate((aiderResult.stdout + "\n" + aiderResult.stderr).trim(), 6000)}\n\`\`\`\n`,
+              `\n\n\`\`\`\n${truncate((agentResult.stdout + "\n" + agentResult.stderr).trim(), 6000)}\n\`\`\`\n`,
           });
-          core.setFailed("Aider failed to generate a fix.");
+          core.setFailed(`${agentType} failed to generate a fix.`);
           return;
         }
-        core.warning(`Aider failed (attempt ${attempt + 1}/${retryMax}), will retry...`);
-        previousTestFailure = truncate((aiderResult.stdout + "\n" + aiderResult.stderr).trim(), 10_000);
+        core.warning(`${agentType} failed (attempt ${attempt + 1}/${retryMax}), will retry...`);
+        previousTestFailure = truncate((agentResult.stdout + "\n" + agentResult.stderr).trim(), 10_000);
         continue;
       }
 
-      // Check if Aider made any changes
+      // Check if agent made any changes
       const status = exec("git status --porcelain", { silent: true }).stdout.trim();
       if (!status) {
         if (attempt === retryMax - 1) {
@@ -444,19 +347,18 @@ async function run(): Promise<void> {
             owner,
             repo,
             issue_number: issueNumber,
-            body: `Aider analyzed the issue but made no file changes after ${retryMax} attempt(s). No PR was created.`,
+            body: `${agentType} analyzed the issue but made no file changes after ${retryMax} attempt(s). No PR was created.`,
           });
           return;
         }
-        core.warning(`Aider made no changes (attempt ${attempt + 1}/${retryMax}), will retry...`);
-        previousTestFailure =
-          "Aider did not make any file changes. Please analyze the issue more carefully and modify the appropriate files.";
+        core.warning(`${agentType} made no changes (attempt ${attempt + 1}/${retryMax}), will retry...`);
+        previousTestFailure = `${agentType} did not make any file changes. Please analyze the issue more carefully and modify the appropriate files.`;
         continue;
       }
 
       core.info(`Files changed:\n${status}`);
 
-      // Run FULL TEST SUITE after Aider fix to check for regressions
+      // Run FULL TEST SUITE after agent fix to check for regressions
       if (testCommandSuite.trim()) {
         core.info(`Running full test suite for regression check: ${testCommandSuite}`);
         const testRes = exec(testCommandSuite, { silent: true, cwd: workingDirectory });
@@ -468,7 +370,7 @@ async function run(): Promise<void> {
               repo,
               issue_number: issueNumber,
               body:
-                `Aider generated a fix, but the full test suite failed after ${retryMax} attempt(s). PR not opened.\n\n` +
+                `${agentType} generated a fix, but the full test suite failed after ${retryMax} attempt(s). PR not opened.\n\n` +
                 "Test output:\n" +
                 `\n\n\`\`\`\n${truncate(testOutput, 8000)}\n\`\`\`\n`,
             });
@@ -492,7 +394,7 @@ async function run(): Promise<void> {
               repo,
               issue_number: issueNumber,
               body:
-                `Aider generated a fix, but the specific test still failed after ${retryMax} attempt(s). PR not opened.\n\n` +
+                `${agentType} generated a fix, but the specific test still failed after ${retryMax} attempt(s). PR not opened.\n\n` +
                 "Test output:\n" +
                 `\n\n\`\`\`\n${truncate(testOutput, 8000)}\n\`\`\`\n`,
             });
@@ -542,7 +444,7 @@ async function run(): Promise<void> {
     exec(`git commit -m ${shellEscape(`Fix: issue #${issueNumber}`)}`);
 
     // Generate PR description using OpenAI if enabled
-    let prBody = `Automated fix for issue #${issueNumber} using Aider.\n\nCloses #${issueNumber}.`;
+    let prBody = `Automated fix for issue #${issueNumber} using ${agentType}.\n\nCloses #${issueNumber}.`;
     if (addDescription && openaiApiKey.trim()) {
       try {
         const generatedDescription = await generatePRDescription({

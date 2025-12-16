@@ -132,7 +132,7 @@ test("parseRetryMax handles NaN gracefully (returns default)", () => {
   assert.equal(parseRetryMax("invalid"), 3);
 });
 
-// Test buildAiderPrompt retry message pattern
+// Test buildAgentPrompt retry message pattern
 function buildRetryMessage(attempt: number, previousFailure: string): string | undefined {
   if (attempt > 0 && previousFailure) {
     return (

@@ -7,18 +7,26 @@ inputs:
   github-token:
     description: "GitHub token (use secrets.GITHUB_TOKEN)"
     required: true
+  agent:
+    description: "Agent to use for fixing bugs (codex or aider)"
+    required: false
+    default: "codex"
   openai-api-key:
-    description: "OpenAI API key (required if using OpenAI models)"
+    description: "OpenAI API key (required for Codex, and for Aider with OpenAI models)"
     required: false
     default: ""
   anthropic-api-key:
-    description: "Anthropic API key (required if using Claude models)"
+    description: "Anthropic API key (required if using Aider with Claude models)"
     required: false
     default: ""
-  model:
+  aider-model:
     description: "Model to use with Aider (e.g., gpt-4o, claude-3-5-sonnet-20241022, o1-preview)"
     required: false
     default: "gpt-4o"
+  codex-model:
+    description: "Model to use with Codex agent"
+    required: false
+    default: "gpt-5.2"
   required-label:
     description: "Only run if the issue has this label"
     required: false
@@ -36,15 +44,19 @@ inputs:
     required: false
     default: ""
   aider-version:
-    description: "Version of aider-chat to install (leave empty for latest)"
+    description: "Version of aider-chat to install (leave empty for latest). Only used when agent is 'aider'."
+    required: false
+    default: ""
+  codex-version:
+    description: "Version of @openai/codex to install (leave empty for latest). Only used when agent is 'codex'."
     required: false
     default: ""
   working-directory:
-    description: "Working directory for running test commands and Aider (defaults to repo root)"
+    description: "Working directory for running test commands and agent (defaults to repo root)"
     required: false
     default: ""
   retry-max:
-    description: "Maximum number of retries when tests fail after Aider fix (default 3)"
+    description: "Maximum number of retries when tests fail after agent fix (default 3)"
     required: false
     default: "3"
   add-description:

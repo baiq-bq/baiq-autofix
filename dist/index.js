@@ -1,7 +1,7 @@
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
-/***/ 1188:
+/***/ 9766:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -39,46 +39,21 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.aiderAgent = exports.DEFAULT_AIDER_MODEL = void 0;
+exports.installAider = installAider;
+exports.runAider = runAider;
 const core = __importStar(__nccwpck_require__(7484));
-const github = __importStar(__nccwpck_require__(3228));
 const child_process_1 = __nccwpck_require__(5317);
 const os = __importStar(__nccwpck_require__(857));
 const path = __importStar(__nccwpck_require__(6928));
 const fs = __importStar(__nccwpck_require__(9896));
-const openai_1 = __importDefault(__nccwpck_require__(2583));
-const lib_1 = __nccwpck_require__(1767);
-function shellEscape(arg) {
-    return `'${arg.replace(/'/g, "'\\''")}'`;
-}
-function exec(cmd, opts) {
-    try {
-        const stdout = (0, child_process_1.execSync)(cmd, {
-            encoding: "utf8",
-            stdio: ["ignore", "pipe", "pipe"],
-            env: opts?.env ?? process.env,
-            cwd: opts?.cwd,
-        });
-        if (!opts?.silent)
-            core.info(cmd);
-        return { stdout, stderr: "", exitCode: 0 };
-    }
-    catch (err) {
-        const e = err;
-        const stdout = e?.stdout?.toString?.() ?? "";
-        const stderr = e?.stderr?.toString?.() ?? e?.message ?? "";
-        if (!opts?.silent)
-            core.info(cmd);
-        return { stdout, stderr, exitCode: e?.status ?? 1 };
-    }
-}
+const utils_1 = __nccwpck_require__(9277);
+exports.DEFAULT_AIDER_MODEL = "gpt-4o";
 function installAider(version) {
     core.info(`Installing Aider${version ? ` (version: ${version})` : ""}...`);
     const pkg = version ? `aider-chat==${version}` : "aider-chat";
-    const res = exec(`pip install ${pkg}`, { silent: true });
+    const res = (0, utils_1.exec)(`pip install ${pkg}`, { silent: true });
     if (res.exitCode !== 0) {
         throw new Error(`Failed to install Aider: ${res.stderr || res.stdout}`);
     }
@@ -142,7 +117,241 @@ function runAider(params) {
         exitCode: result.status ?? 1,
     };
 }
-function buildAiderPrompt(params) {
+exports.aiderAgent = {
+    name: "aider",
+    install: installAider,
+    run: runAider,
+};
+
+
+/***/ }),
+
+/***/ 7928:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.codexAgent = exports.DEFAULT_CODEX_MODEL = void 0;
+exports.installCodex = installCodex;
+exports.runCodex = runCodex;
+const core = __importStar(__nccwpck_require__(7484));
+const child_process_1 = __nccwpck_require__(5317);
+const os = __importStar(__nccwpck_require__(857));
+const path = __importStar(__nccwpck_require__(6928));
+const fs = __importStar(__nccwpck_require__(9896));
+const utils_1 = __nccwpck_require__(9277);
+exports.DEFAULT_CODEX_MODEL = "gpt-5.2";
+function configureCodex() {
+    // Create ~/.codex/config.toml with preferred_auth_method = "apikey"
+    const codexConfigDir = path.join(os.homedir(), ".codex");
+    const codexConfigFile = path.join(codexConfigDir, "config.toml");
+    // Ensure the directory exists
+    if (!fs.existsSync(codexConfigDir)) {
+        fs.mkdirSync(codexConfigDir, { recursive: true });
+    }
+    // Write the config file
+    const configContent = 'preferred_auth_method = "apikey"\n';
+    fs.writeFileSync(codexConfigFile, configContent, "utf8");
+    core.info(`Codex config written to ${codexConfigFile}`);
+}
+function installCodex(version) {
+    core.info(`Installing Codex CLI${version ? ` (version: ${version})` : ""}...`);
+    const pkg = version ? `@openai/codex@${version}` : "@openai/codex";
+    const res = (0, utils_1.exec)(`npm install -g ${pkg}`, { silent: true });
+    if (res.exitCode !== 0) {
+        throw new Error(`Failed to install Codex CLI: ${res.stderr || res.stdout}`);
+    }
+    core.info("Codex CLI installed successfully.");
+}
+function runCodex(params) {
+    // Codex requires OpenAI API key
+    const hasOpenAI = params.openaiApiKey && params.openaiApiKey.trim() !== "";
+    if (!hasOpenAI) {
+        return {
+            stdout: "",
+            stderr: "Error: OPENAI_API_KEY is required for Codex agent",
+            exitCode: 1,
+        };
+    }
+    // Export OPENAI_API_KEY to the GitHub Actions environment (persists for the job)
+    // This ensures the API key is available in the shell profile for codex
+    core.exportVariable("OPENAI_API_KEY", params.openaiApiKey);
+    // Step 1: Configure codex to use API key authentication
+    configureCodex();
+    // Step 2: Write prompt to a temp file to avoid shell escaping issues
+    const promptFile = path.join(os.tmpdir(), `codex-prompt-${Date.now()}.txt`);
+    fs.writeFileSync(promptFile, params.prompt, "utf8");
+    // Build codex command arguments
+    // --approval-mode full-auto: auto-accept all changes (non-interactive)
+    // --model: specify the model
+    // --quiet: reduce output noise
+    const args = [
+        "--approval-mode",
+        "full-auto",
+        "--model",
+        params.model,
+        "--quiet",
+        fs.readFileSync(promptFile, "utf8"),
+    ];
+    core.info("Running Codex...");
+    core.info(`codex --approval-mode full-auto --model ${params.model} --quiet <prompt>`);
+    // Build environment with API key
+    const env = { ...process.env };
+    env.OPENAI_API_KEY = params.openaiApiKey;
+    // Run from working directory if specified, otherwise repo root
+    const cwd = params.workingDirectory || params.repoRoot;
+    const result = (0, child_process_1.spawnSync)("codex", args, {
+        cwd,
+        encoding: "utf8",
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 600_000, // 10 minute timeout
+    });
+    // Clean up prompt file
+    try {
+        fs.unlinkSync(promptFile);
+    }
+    catch {
+        // Ignore cleanup errors
+    }
+    return {
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
+        exitCode: result.status ?? 1,
+    };
+}
+exports.codexAgent = {
+    name: "codex",
+    install: installCodex,
+    run: runCodex,
+};
+
+
+/***/ }),
+
+/***/ 1991:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DEFAULT_CODEX_MODEL = exports.runCodex = exports.installCodex = exports.codexAgent = exports.DEFAULT_AIDER_MODEL = exports.runAider = exports.installAider = exports.aiderAgent = void 0;
+exports.getAgent = getAgent;
+exports.isValidAgentType = isValidAgentType;
+var aider_1 = __nccwpck_require__(9766);
+Object.defineProperty(exports, "aiderAgent", ({ enumerable: true, get: function () { return aider_1.aiderAgent; } }));
+Object.defineProperty(exports, "installAider", ({ enumerable: true, get: function () { return aider_1.installAider; } }));
+Object.defineProperty(exports, "runAider", ({ enumerable: true, get: function () { return aider_1.runAider; } }));
+Object.defineProperty(exports, "DEFAULT_AIDER_MODEL", ({ enumerable: true, get: function () { return aider_1.DEFAULT_AIDER_MODEL; } }));
+var codex_1 = __nccwpck_require__(7928);
+Object.defineProperty(exports, "codexAgent", ({ enumerable: true, get: function () { return codex_1.codexAgent; } }));
+Object.defineProperty(exports, "installCodex", ({ enumerable: true, get: function () { return codex_1.installCodex; } }));
+Object.defineProperty(exports, "runCodex", ({ enumerable: true, get: function () { return codex_1.runCodex; } }));
+Object.defineProperty(exports, "DEFAULT_CODEX_MODEL", ({ enumerable: true, get: function () { return codex_1.DEFAULT_CODEX_MODEL; } }));
+const aider_2 = __nccwpck_require__(9766);
+const codex_2 = __nccwpck_require__(7928);
+function getAgent(type) {
+    switch (type) {
+        case "codex":
+            return codex_2.codexAgent;
+        case "aider":
+            return aider_2.aiderAgent;
+        default:
+            throw new Error(`Unknown agent type: ${type}`);
+    }
+}
+function isValidAgentType(value) {
+    return value === "codex" || value === "aider";
+}
+
+
+/***/ }),
+
+/***/ 1188:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const core = __importStar(__nccwpck_require__(7484));
+const github = __importStar(__nccwpck_require__(3228));
+const path = __importStar(__nccwpck_require__(6928));
+const fs = __importStar(__nccwpck_require__(9896));
+const openai_1 = __importDefault(__nccwpck_require__(2583));
+const lib_1 = __nccwpck_require__(1767);
+const utils_1 = __nccwpck_require__(9277);
+const agents_1 = __nccwpck_require__(1991);
+function buildAgentPrompt(params) {
     let prompt = "You are fixing a bug in this codebase based on a GitHub bug report issue.\n\n" +
         "The bug report structure is:\n" +
         "- USER STORY: describes the requirement/feature being tested\n" +
@@ -209,22 +418,37 @@ Keep each section brief but informative. Use markdown formatting.`;
 }
 async function run() {
     const ghToken = core.getInput("github-token", { required: true });
+    const agentInput = core.getInput("agent") || "codex";
     const openaiApiKey = core.getInput("openai-api-key") || "";
     const anthropicApiKey = core.getInput("anthropic-api-key") || "";
-    const model = core.getInput("model") || "gpt-4o";
+    const aiderModel = core.getInput("aider-model") || agents_1.DEFAULT_AIDER_MODEL;
+    const codexModel = core.getInput("codex-model") || agents_1.DEFAULT_CODEX_MODEL;
     const requiredLabel = core.getInput("required-label") || "autofix";
     const baseBranchInput = core.getInput("base-branch") || "";
     const testCommandSpecificFallback = core.getInput("test-command-specific") || "";
     const testCommandSuiteFallback = core.getInput("test-command-suite") || "";
     const aiderVersion = core.getInput("aider-version") || "";
+    const codexVersion = core.getInput("codex-version") || "";
     const workingDirectoryInput = core.getInput("working-directory") || "";
     const retryMaxParsed = parseInt(core.getInput("retry-max") || "3", 10);
     const retryMax = Number.isNaN(retryMaxParsed) ? 3 : Math.max(1, retryMaxParsed);
     const addDescription = core.getInput("add-description") !== "false";
     const descriptionModel = core.getInput("description-model") || "gpt-4o";
-    // Validate at least one API key is provided
-    if (!openaiApiKey.trim() && !anthropicApiKey.trim()) {
-        throw new Error("At least one of openai-api-key or anthropic-api-key must be provided");
+    // Validate agent type
+    if (!(0, agents_1.isValidAgentType)(agentInput)) {
+        throw new Error(`Invalid agent type: ${agentInput}. Must be 'codex' or 'aider'.`);
+    }
+    const agentType = agentInput;
+    const agent = (0, agents_1.getAgent)(agentType);
+    const model = agentType === "codex" ? codexModel : aiderModel;
+    const agentVersion = agentType === "codex" ? codexVersion : aiderVersion;
+    core.info(`Using agent: ${agentType} with model: ${model}`);
+    // Validate API keys based on agent type
+    if (agentType === "codex" && !openaiApiKey.trim()) {
+        throw new Error("openai-api-key is required when using codex agent");
+    }
+    if (agentType === "aider" && !openaiApiKey.trim() && !anthropicApiKey.trim()) {
+        throw new Error("At least one of openai-api-key or anthropic-api-key must be provided when using aider agent");
     }
     let owner;
     let repo;
@@ -316,7 +540,7 @@ async function run() {
         let testFailureOutput;
         if (testCommandSpecific.trim()) {
             core.info(`Running specific test to capture failure output: ${testCommandSpecific}`);
-            const preTestRes = exec(testCommandSpecific, { silent: true, cwd: workingDirectory });
+            const preTestRes = (0, utils_1.exec)(testCommandSpecific, { silent: true, cwd: workingDirectory });
             if (preTestRes.exitCode !== 0) {
                 testFailureOutput = (0, lib_1.truncate)((preTestRes.stdout + "\n" + preTestRes.stderr).trim(), 15_000);
                 core.info("Specific test failed (expected for bug). Including failure output in prompt context.");
@@ -328,35 +552,35 @@ async function run() {
         else {
             core.info("No specific test command provided; skipping pre-fix test.");
         }
-        // Install Aider
-        installAider(aiderVersion);
-        // Checkout base branch and create working branch BEFORE running Aider
+        // Install the selected agent
+        agent.install(agentVersion);
+        // Checkout base branch and create working branch BEFORE running agent
         core.info(`Checking out base branch ${baseBranch} and creating working branch...`);
-        exec(`git fetch origin ${shellEscape(baseBranch)}`);
-        exec(`git checkout ${shellEscape(baseBranch)}`);
-        exec(`git pull --ff-only origin ${shellEscape(baseBranch)}`);
+        (0, utils_1.exec)(`git fetch origin ${(0, utils_1.shellEscape)(baseBranch)}`);
+        (0, utils_1.exec)(`git checkout ${(0, utils_1.shellEscape)(baseBranch)}`);
+        (0, utils_1.exec)(`git pull --ff-only origin ${(0, utils_1.shellEscape)(baseBranch)}`);
         const branchName = `qa/issue-${issueNumber}-${Date.now()}`;
-        exec(`git checkout -b ${shellEscape(branchName)}`);
-        // Retry loop for Aider fix + test validation
+        (0, utils_1.exec)(`git checkout -b ${(0, utils_1.shellEscape)(branchName)}`);
+        // Retry loop for agent fix + test validation
         let previousTestFailure;
         let fixSucceeded = false;
         for (let attempt = 0; attempt < retryMax; attempt++) {
             if (attempt > 0) {
                 core.info(`\n=== RETRY ATTEMPT ${attempt + 1}/${retryMax} ===`);
                 // Reset changes from previous failed attempt
-                exec("git checkout .", { silent: true });
-                exec("git clean -fd", { silent: true });
+                (0, utils_1.exec)("git checkout .", { silent: true });
+                (0, utils_1.exec)("git clean -fd", { silent: true });
             }
-            // Build the prompt for Aider (with retry info if applicable)
-            const prompt = buildAiderPrompt({
+            // Build the prompt for agent (with retry info if applicable)
+            const prompt = buildAgentPrompt({
                 issueTitle,
                 issueBody: issueBodyForPrompt,
                 testFailureOutput,
                 retryAttempt: attempt,
                 previousTestFailure,
             });
-            // Run Aider - it will modify files directly
-            const aiderResult = runAider({
+            // Run agent - it will modify files directly
+            const agentResult = agent.run({
                 prompt,
                 repoRoot,
                 workingDirectory: workingDirectory !== repoRoot ? workingDirectory : undefined,
@@ -364,52 +588,52 @@ async function run() {
                 anthropicApiKey: anthropicApiKey || undefined,
                 model,
             });
-            core.info("=== AIDER OUTPUT ===");
-            core.info((0, lib_1.truncate)(aiderResult.stdout, 4000));
-            if (aiderResult.stderr) {
-                core.info("=== AIDER STDERR ===");
-                core.info((0, lib_1.truncate)(aiderResult.stderr, 2000));
+            core.info(`=== ${agentType.toUpperCase()} OUTPUT ===`);
+            core.info((0, lib_1.truncate)(agentResult.stdout, 4000));
+            if (agentResult.stderr) {
+                core.info(`=== ${agentType.toUpperCase()} STDERR ===`);
+                core.info((0, lib_1.truncate)(agentResult.stderr, 2000));
             }
-            core.info("=== END AIDER OUTPUT ===");
-            if (aiderResult.exitCode !== 0) {
+            core.info(`=== END ${agentType.toUpperCase()} OUTPUT ===`);
+            if (agentResult.exitCode !== 0) {
                 if (attempt === retryMax - 1) {
                     await octokit.rest.issues.createComment({
                         owner,
                         repo,
                         issue_number: issueNumber,
-                        body: `Aider failed to generate a fix after ${retryMax} attempt(s).\n\n` +
+                        body: `${agentType} failed to generate a fix after ${retryMax} attempt(s).\n\n` +
                             "Output:\n" +
-                            `\n\n\`\`\`\n${(0, lib_1.truncate)((aiderResult.stdout + "\n" + aiderResult.stderr).trim(), 6000)}\n\`\`\`\n`,
+                            `\n\n\`\`\`\n${(0, lib_1.truncate)((agentResult.stdout + "\n" + agentResult.stderr).trim(), 6000)}\n\`\`\`\n`,
                     });
-                    core.setFailed("Aider failed to generate a fix.");
+                    core.setFailed(`${agentType} failed to generate a fix.`);
                     return;
                 }
-                core.warning(`Aider failed (attempt ${attempt + 1}/${retryMax}), will retry...`);
-                previousTestFailure = (0, lib_1.truncate)((aiderResult.stdout + "\n" + aiderResult.stderr).trim(), 10_000);
+                core.warning(`${agentType} failed (attempt ${attempt + 1}/${retryMax}), will retry...`);
+                previousTestFailure = (0, lib_1.truncate)((agentResult.stdout + "\n" + agentResult.stderr).trim(), 10_000);
                 continue;
             }
-            // Check if Aider made any changes
-            const status = exec("git status --porcelain", { silent: true }).stdout.trim();
+            // Check if agent made any changes
+            const status = (0, utils_1.exec)("git status --porcelain", { silent: true }).stdout.trim();
             if (!status) {
                 if (attempt === retryMax - 1) {
                     await octokit.rest.issues.createComment({
                         owner,
                         repo,
                         issue_number: issueNumber,
-                        body: `Aider analyzed the issue but made no file changes after ${retryMax} attempt(s). No PR was created.`,
+                        body: `${agentType} analyzed the issue but made no file changes after ${retryMax} attempt(s). No PR was created.`,
                     });
                     return;
                 }
-                core.warning(`Aider made no changes (attempt ${attempt + 1}/${retryMax}), will retry...`);
+                core.warning(`${agentType} made no changes (attempt ${attempt + 1}/${retryMax}), will retry...`);
                 previousTestFailure =
-                    "Aider did not make any file changes. Please analyze the issue more carefully and modify the appropriate files.";
+                    `${agentType} did not make any file changes. Please analyze the issue more carefully and modify the appropriate files.`;
                 continue;
             }
             core.info(`Files changed:\n${status}`);
-            // Run FULL TEST SUITE after Aider fix to check for regressions
+            // Run FULL TEST SUITE after agent fix to check for regressions
             if (testCommandSuite.trim()) {
                 core.info(`Running full test suite for regression check: ${testCommandSuite}`);
-                const testRes = exec(testCommandSuite, { silent: true, cwd: workingDirectory });
+                const testRes = (0, utils_1.exec)(testCommandSuite, { silent: true, cwd: workingDirectory });
                 if (testRes.exitCode !== 0) {
                     const testOutput = (0, lib_1.truncate)((testRes.stdout + "\n" + testRes.stderr).trim(), 10_000);
                     if (attempt === retryMax - 1) {
@@ -417,7 +641,7 @@ async function run() {
                             owner,
                             repo,
                             issue_number: issueNumber,
-                            body: `Aider generated a fix, but the full test suite failed after ${retryMax} attempt(s). PR not opened.\n\n` +
+                            body: `${agentType} generated a fix, but the full test suite failed after ${retryMax} attempt(s). PR not opened.\n\n` +
                                 "Test output:\n" +
                                 `\n\n\`\`\`\n${(0, lib_1.truncate)(testOutput, 8000)}\n\`\`\`\n`,
                         });
@@ -433,7 +657,7 @@ async function run() {
             else if (testCommandSpecific.trim()) {
                 // No full test suite, but specific test is available - run it to verify the fix
                 core.info(`No full test suite; running specific test to verify fix: ${testCommandSpecific}`);
-                const testRes = exec(testCommandSpecific, { silent: true, cwd: workingDirectory });
+                const testRes = (0, utils_1.exec)(testCommandSpecific, { silent: true, cwd: workingDirectory });
                 if (testRes.exitCode !== 0) {
                     const testOutput = (0, lib_1.truncate)((testRes.stdout + "\n" + testRes.stderr).trim(), 10_000);
                     if (attempt === retryMax - 1) {
@@ -441,7 +665,7 @@ async function run() {
                             owner,
                             repo,
                             issue_number: issueNumber,
-                            body: `Aider generated a fix, but the specific test still failed after ${retryMax} attempt(s). PR not opened.\n\n` +
+                            body: `${agentType} generated a fix, but the specific test still failed after ${retryMax} attempt(s). PR not opened.\n\n` +
                                 "Test output:\n" +
                                 `\n\n\`\`\`\n${(0, lib_1.truncate)(testOutput, 8000)}\n\`\`\`\n`,
                         });
@@ -466,8 +690,8 @@ async function run() {
             return;
         }
         // Get changed files list and diff before committing
-        const changedFilesList = exec("git diff --name-only", { silent: true }).stdout.trim().split("\n").filter(Boolean);
-        const diff = exec("git diff", { silent: true }).stdout;
+        const changedFilesList = (0, utils_1.exec)("git diff --name-only", { silent: true }).stdout.trim().split("\n").filter(Boolean);
+        const diff = (0, utils_1.exec)("git diff", { silent: true }).stdout;
         // Read content of changed files
         const changedFiles = [];
         for (const filePath of changedFilesList) {
@@ -481,12 +705,12 @@ async function run() {
             }
         }
         core.info("Committing changes...");
-        exec('git config user.name "github-actions[bot]"');
-        exec('git config user.email "41898282+github-actions[bot]@users.noreply.github.com"');
-        exec("git add -A");
-        exec(`git commit -m ${shellEscape(`Fix: issue #${issueNumber}`)}`);
+        (0, utils_1.exec)('git config user.name "github-actions[bot]"');
+        (0, utils_1.exec)('git config user.email "41898282+github-actions[bot]@users.noreply.github.com"');
+        (0, utils_1.exec)("git add -A");
+        (0, utils_1.exec)(`git commit -m ${(0, utils_1.shellEscape)(`Fix: issue #${issueNumber}`)}`);
         // Generate PR description using OpenAI if enabled
-        let prBody = `Automated fix for issue #${issueNumber} using Aider.\n\nCloses #${issueNumber}.`;
+        let prBody = `Automated fix for issue #${issueNumber} using ${agentType}.\n\nCloses #${issueNumber}.`;
         if (addDescription && openaiApiKey.trim()) {
             try {
                 const generatedDescription = await generatePRDescription({
@@ -509,7 +733,7 @@ async function run() {
             core.warning("PR description generation requires OpenAI API key. Using default description.");
         }
         core.info("Pushing branch...");
-        exec(`git push --set-upstream origin ${shellEscape(branchName)}`);
+        (0, utils_1.exec)(`git push --set-upstream origin ${(0, utils_1.shellEscape)(branchName)}`);
         core.info("Creating PR...");
         let pr;
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -659,6 +883,77 @@ function parseGitHubIssueRef(params) {
 }
 function escapeRegExp(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+
+/***/ }),
+
+/***/ 9277:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.shellEscape = shellEscape;
+exports.exec = exec;
+const core = __importStar(__nccwpck_require__(7484));
+const child_process_1 = __nccwpck_require__(5317);
+function shellEscape(arg) {
+    return `'${arg.replace(/'/g, "'\\''")}'`;
+}
+function exec(cmd, opts) {
+    try {
+        const stdout = (0, child_process_1.execSync)(cmd, {
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+            env: opts?.env ?? process.env,
+            cwd: opts?.cwd,
+        });
+        if (!opts?.silent)
+            core.info(cmd);
+        return { stdout, stderr: "", exitCode: 0 };
+    }
+    catch (err) {
+        const e = err;
+        const stdout = e?.stdout?.toString?.() ?? "";
+        const stderr = e?.stderr?.toString?.() ?? e?.message ?? "";
+        if (!opts?.silent)
+            core.info(cmd);
+        return { stdout, stderr, exitCode: e?.status ?? 1 };
+    }
 }
 
 
