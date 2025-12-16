@@ -225,7 +225,7 @@ function runCodex(params) {
         `codex --config preferred_auth_method=apikey exec --full-auto --model ${(0, utils_1.shellEscape)(params.model)} --quiet ` +
         `--message-file ${(0, utils_1.shellEscape)(promptFile)}`;
     core.info("Running Codex...");
-    core.info(`OPENAI_API_KEY=*** codex --approval-mode full-auto --model ${params.model} --quiet --message-file <prompt>`);
+    core.info(`OPENAI_API_KEY=*** codex --approval-mode full-auto --model ${params.model} --message-file <prompt>`);
     const result = (0, child_process_1.spawnSync)("sh", ["-c", codexCmd], {
         cwd,
         encoding: "utf8",
