@@ -34,7 +34,9 @@ export function extractIssueFormFieldValue(issueBody: string, label: string): st
       .join("\n")
       .trim();
 
-    return val || undefined;
+    if (!val) return undefined;
+    if (val.trim().toLowerCase() === "_no response_") return undefined;
+    return val;
   }
 
   return undefined;
@@ -114,6 +116,30 @@ export function stripIssueSections(issueBody: string, labels: string[]): string 
   return out.join("\n").trimEnd();
 }
 
+export function resolveBaseBranch(params: {
+  issueBranch: string;
+  baseBranchInput: string;
+  defaultBranch: string;
+}): string {
+  const baseBranchInput = normalizeBranchName(params.baseBranchInput);
+  if (baseBranchInput) return baseBranchInput;
+
+  const issueBranch = normalizeBranchName(params.issueBranch);
+  if (issueBranch) return issueBranch;
+
+  return normalizeBranchName(params.defaultBranch) || params.defaultBranch;
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeBranchName(raw: string): string {
+  const s = raw.trim();
+  if (!s) return "";
+  if (s.toLowerCase() === "_no response_") return "";
+
+  if (s.startsWith("refs/heads/")) return s.slice("refs/heads/".length).trim();
+  if (s.startsWith("origin/")) return s.slice("origin/".length).trim();
+  return s;
 }

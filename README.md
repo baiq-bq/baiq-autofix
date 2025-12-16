@@ -122,6 +122,8 @@ body:
       placeholder: "npm test"
 ```
 
+Note: GitHub Issue Forms may insert the placeholder value `_No response_` for optional fields. The action treats `_No response_` as an empty value and will fall back to `base-branch` (if provided) or the repository default branch.
+
 ---
 
 ## ⚙️ Usage & Configuration
@@ -137,12 +139,14 @@ body:
 | `aider-model` | ❌ | `gpt-4o` | Model for Aider (e.g., `claude-3-5-sonnet-20241022`) |
 | `codex-model` | ❌ | `gpt-5-codex` | Model for Codex |
 | `required-label` | ❌ | `autofix` | Action only runs on issues with this label |
-| `base-branch` | ❌ | (default) | Base branch for PR if not specified in issue |
+| `base-branch` | ❌ | (default) | Base branch for PR. If set, it overrides the issue field `Branch where bug was discovered`. |
 | `test-command-specific` | ❌ | - | Fallback specific test command |
 | `test-command-suite` | ❌ | - | Fallback full test suite command |
 | `retry-max` | ❌ | `3` | Max retries to fix the code if tests fail |
 | `add-description` | ❌ | `true` | Generate AI PR description? |
 | `working-directory` | ❌ | - | Subdirectory for the project components |
+
+If the resolved base branch does not exist in the repository, the action fails early with a clear error message and posts a comment on the issue.
 
 ### Triggering a Fix
 
@@ -160,6 +164,8 @@ body:
 -   **Features**: Repository map (understands full context), native test-driven development loop.
 -   **Models**: Supports `gpt-4o`, `gpt-4-turbo`, `o1-preview`, `claude-3-5-sonnet-20241022`.
 -   **Usage**: Best for complex bugs requiring multiple file changes and deep context.
+
+When using `aider`, the action allows the agent to run tests as part of its native loop.
 
 ### Codex
 A specialized CLI agent from OpenAI.

@@ -216,3 +216,23 @@ test("buildDescriptionPromptSections identifies all required sections", () => {
   assert.ok(sections.includes("Solution"));
   assert.ok(sections.includes("How It Fixes the Bug"));
 });
+
+// Mirror buildAgentPrompt restriction behavior in src/index.ts
+function buildPromptRestrictionsForAgent(agentType: "aider" | "codex"): string {
+  return (
+    "IMPORTANT RESTRICTIONS:\n" +
+    (agentType === "aider" ? "" : "- Do NOT run any tests - the CI system will run them\n") +
+    "- Do NOT run git commands (no git add, git commit, git push) - the CI system handles all git operations\n" +
+    "- ONLY modify the source files needed to fix the bug"
+  );
+}
+
+test("prompt restrictions omit test prohibition for aider", () => {
+  const restrictions = buildPromptRestrictionsForAgent("aider");
+  assert.equal(restrictions.includes("Do NOT run any tests"), false);
+});
+
+test("prompt restrictions include test prohibition for non-aider agents", () => {
+  const restrictions = buildPromptRestrictionsForAgent("codex");
+  assert.equal(restrictions.includes("Do NOT run any tests"), true);
+});

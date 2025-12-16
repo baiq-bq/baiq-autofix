@@ -4,7 +4,13 @@ import * as path from "path";
 import * as fs from "fs";
 import OpenAI from "openai";
 
-import { extractIssueFormFieldValue, parseGitHubIssueRef, stripIssueSections, truncate } from "./lib";
+import {
+  extractIssueFormFieldValue,
+  parseGitHubIssueRef,
+  resolveBaseBranch,
+  stripIssueSections,
+  truncate,
+} from "./lib";
 import { exec, shellEscape } from "./utils";
 import { getAgent, isValidAgentType, DEFAULT_CODEX_MODEL, DEFAULT_AIDER_MODEL } from "./agents";
 import type { AgentType } from "./agents";
@@ -40,6 +46,7 @@ async function postCommentWithChunks(params: {
 function buildAgentPrompt(params: {
   issueTitle: string;
   issueBody: string;
+  agentType: AgentType;
   testFailureOutput?: string;
   retryAttempt?: number;
   previousTestFailure?: string;
@@ -72,7 +79,7 @@ function buildAgentPrompt(params: {
     "4. Do NOT modify lockfiles (package-lock.json, pnpm-lock.yaml, yarn.lock) or .github/workflows/*\n" +
     "5. Do NOT add unnecessary changes - keep the fix focused and minimal\n\n" +
     "IMPORTANT RESTRICTIONS:\n" +
-    "- Do NOT run any tests - the CI system will run them\n" +
+    (params.agentType === "aider" ? "" : "- Do NOT run any tests - the CI system will run them\n") +
     "- Do NOT run git commands (no git add, git commit, git push) - the CI system handles all git operations\n" +
     "- ONLY modify the source files needed to fix the bug";
 
@@ -255,8 +262,28 @@ async function run(): Promise<void> {
 
     const repoResponse = await octokit.rest.repos.get({ owner, repo });
     const defaultBranch = repoResponse.data.default_branch;
-    // Priority: issue branch field > action input > repo default
-    const baseBranch = issueBranch.trim() || baseBranchInput.trim() || defaultBranch;
+    // Priority: base-branch input (forced) > issue branch field > repo default
+    const baseBranch = resolveBaseBranch({ issueBranch, baseBranchInput, defaultBranch });
+
+    // Validate base branch exists early to avoid later PR creation failure.
+    // `git.getRef` expects refs like `heads/<branch>`
+    try {
+      await octokit.rest.git.getRef({ owner, repo, ref: `heads/${baseBranch}` });
+    } catch {
+      const msg =
+        `Base branch '${baseBranch}' does not exist in ${owner}/${repo}. ` +
+        "Set the action input 'base-branch' to a valid branch name (recommended: the repo default branch), " +
+        "or ensure the issue field 'Branch where bug was discovered' matches an existing branch.";
+      core.setFailed(msg);
+      await postCommentWithChunks({
+        octokit,
+        owner,
+        repo,
+        issueNumber,
+        body: msg,
+      });
+      return;
+    }
 
     const repoRoot = process.cwd();
     const workingDirectory = workingDirectoryInput.trim() ? `${repoRoot}/${workingDirectoryInput.trim()}` : repoRoot;
@@ -298,6 +325,7 @@ async function run(): Promise<void> {
       const prompt = buildAgentPrompt({
         issueTitle,
         issueBody: issueBodyForPrompt,
+        agentType,
         testFailureOutput,
       });
 
@@ -350,6 +378,7 @@ async function run(): Promise<void> {
         const prompt = buildAgentPrompt({
           issueTitle,
           issueBody: issueBodyForPrompt,
+          agentType,
           testFailureOutput,
           retryAttempt: attempt,
           previousTestFailure,

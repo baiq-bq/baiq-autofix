@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { extractIssueFormFieldValue, parseGitHubIssueRef, stripIssueSections, truncate } from "../src/lib";
+import {
+  extractIssueFormFieldValue,
+  parseGitHubIssueRef,
+  resolveBaseBranch,
+  stripIssueSections,
+  truncate,
+} from "../src/lib";
 
 test("truncate returns original string when under limit", () => {
   assert.equal(truncate("abc", 10), "abc");
@@ -32,8 +38,39 @@ test("extractIssueFormFieldValue extracts single-line field", () => {
   );
 });
 
+test("extractIssueFormFieldValue returns undefined for GitHub issue form placeholder", () => {
+  const body = ["# Branch where bug was discovered", "_No response_", "", "# Bug description", "It fails."].join("\n");
+  assert.equal(extractIssueFormFieldValue(body, "Branch where bug was discovered"), undefined);
+});
+
 test("extractIssueFormFieldValue returns undefined when not found", () => {
   assert.equal(extractIssueFormFieldValue("# Something\nvalue", "Nope"), undefined);
+});
+
+test("resolveBaseBranch prefers base-branch input over issue branch", () => {
+  assert.equal(resolveBaseBranch({ issueBranch: "develop", baseBranchInput: "main", defaultBranch: "master" }), "main");
+});
+
+test("resolveBaseBranch uses issue branch when base-branch input is empty", () => {
+  assert.equal(resolveBaseBranch({ issueBranch: "develop", baseBranchInput: "", defaultBranch: "main" }), "develop");
+});
+
+test("resolveBaseBranch falls back to default branch when both inputs are empty", () => {
+  assert.equal(resolveBaseBranch({ issueBranch: "", baseBranchInput: "", defaultBranch: "main" }), "main");
+});
+
+test("resolveBaseBranch strips refs/heads/ prefix", () => {
+  assert.equal(
+    resolveBaseBranch({ issueBranch: "refs/heads/develop", baseBranchInput: "", defaultBranch: "main" }),
+    "develop"
+  );
+});
+
+test("resolveBaseBranch strips origin/ prefix", () => {
+  assert.equal(
+    resolveBaseBranch({ issueBranch: "origin/develop", baseBranchInput: "", defaultBranch: "main" }),
+    "develop"
+  );
 });
 
 test("parseGitHubIssueRef parses GitHub issue URL", () => {

@@ -407,7 +407,7 @@ function buildAgentPrompt(params) {
             "4. Do NOT modify lockfiles (package-lock.json, pnpm-lock.yaml, yarn.lock) or .github/workflows/*\n" +
             "5. Do NOT add unnecessary changes - keep the fix focused and minimal\n\n" +
             "IMPORTANT RESTRICTIONS:\n" +
-            "- Do NOT run any tests - the CI system will run them\n" +
+            (params.agentType === "aider" ? "" : "- Do NOT run any tests - the CI system will run them\n") +
             "- Do NOT run git commands (no git add, git commit, git push) - the CI system handles all git operations\n" +
             "- ONLY modify the source files needed to fix the bug";
     return prompt;
@@ -546,8 +546,27 @@ async function run() {
         const issueBodyForPrompt = (0, lib_1.truncate)(issueBodyWithoutUserStory + (referencedContexts.length ? `\n\n${referencedContexts.join("\n\n")}` : ""), 180_000);
         const repoResponse = await octokit.rest.repos.get({ owner, repo });
         const defaultBranch = repoResponse.data.default_branch;
-        // Priority: issue branch field > action input > repo default
-        const baseBranch = issueBranch.trim() || baseBranchInput.trim() || defaultBranch;
+        // Priority: base-branch input (forced) > issue branch field > repo default
+        const baseBranch = (0, lib_1.resolveBaseBranch)({ issueBranch, baseBranchInput, defaultBranch });
+        // Validate base branch exists early to avoid later PR creation failure.
+        // `git.getRef` expects refs like `heads/<branch>`
+        try {
+            await octokit.rest.git.getRef({ owner, repo, ref: `heads/${baseBranch}` });
+        }
+        catch (e) {
+            const msg = `Base branch '${baseBranch}' does not exist in ${owner}/${repo}. ` +
+                "Set the action input 'base-branch' to a valid branch name (recommended: the repo default branch), " +
+                "or ensure the issue field 'Branch where bug was discovered' matches an existing branch.";
+            core.setFailed(msg);
+            await postCommentWithChunks({
+                octokit,
+                owner,
+                repo,
+                issueNumber,
+                body: msg,
+            });
+            return;
+        }
         const repoRoot = process.cwd();
         const workingDirectory = workingDirectoryInput.trim() ? `${repoRoot}/${workingDirectoryInput.trim()}` : repoRoot;
         // Run SPECIFIC test BEFORE generating the fix to capture failure output for the prompt
@@ -583,6 +602,7 @@ async function run() {
             const prompt = buildAgentPrompt({
                 issueTitle,
                 issueBody: issueBodyForPrompt,
+                agentType,
                 testFailureOutput,
             });
             // Chain specific test and suite for Aider's native loop
@@ -630,6 +650,7 @@ async function run() {
                 const prompt = buildAgentPrompt({
                     issueTitle,
                     issueBody: issueBodyForPrompt,
+                    agentType,
                     testFailureOutput,
                     retryAttempt: attempt,
                     previousTestFailure,
@@ -877,6 +898,7 @@ exports.truncate = truncate;
 exports.extractIssueFormFieldValue = extractIssueFormFieldValue;
 exports.parseGitHubIssueRef = parseGitHubIssueRef;
 exports.stripIssueSections = stripIssueSections;
+exports.resolveBaseBranch = resolveBaseBranch;
 function truncate(s, maxChars) {
     if (s.length <= maxChars)
         return s;
@@ -904,7 +926,11 @@ function extractIssueFormFieldValue(issueBody, label) {
             .filter((l) => l.length > 0)
             .join("\n")
             .trim();
-        return val || undefined;
+        if (!val)
+            return undefined;
+        if (val.trim().toLowerCase() === "_no response_")
+            return undefined;
+        return val;
     }
     return undefined;
 }
@@ -974,8 +1000,29 @@ function stripIssueSections(issueBody, labels) {
     }
     return out.join("\n").trimEnd();
 }
+function resolveBaseBranch(params) {
+    const baseBranchInput = normalizeBranchName(params.baseBranchInput);
+    if (baseBranchInput)
+        return baseBranchInput;
+    const issueBranch = normalizeBranchName(params.issueBranch);
+    if (issueBranch)
+        return issueBranch;
+    return normalizeBranchName(params.defaultBranch) || params.defaultBranch;
+}
 function escapeRegExp(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function normalizeBranchName(raw) {
+    const s = raw.trim();
+    if (!s)
+        return "";
+    if (s.toLowerCase() === "_no response_")
+        return "";
+    if (s.startsWith("refs/heads/"))
+        return s.slice("refs/heads/".length).trim();
+    if (s.startsWith("origin/"))
+        return s.slice("origin/".length).trim();
+    return s;
 }
 
 
