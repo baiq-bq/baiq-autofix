@@ -357,10 +357,28 @@ const openai_1 = __importDefault(__nccwpck_require__(2583));
 const lib_1 = __nccwpck_require__(1767);
 const utils_1 = __nccwpck_require__(9277);
 const agents_1 = __nccwpck_require__(1991);
+const ISSUE_COMMENT_CHUNK_SIZE = 60_000;
+async function postCommentWithChunks(params) {
+    const { octokit, owner, repo, issueNumber, body } = params;
+    if (body.length <= ISSUE_COMMENT_CHUNK_SIZE) {
+        await octokit.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+        return;
+    }
+    const totalChunks = Math.ceil(body.length / ISSUE_COMMENT_CHUNK_SIZE);
+    for (let i = 0; i < totalChunks; i++) {
+        const chunk = body.slice(i * ISSUE_COMMENT_CHUNK_SIZE, (i + 1) * ISSUE_COMMENT_CHUNK_SIZE);
+        const prefix = `Log chunk ${i + 1}/${totalChunks}\n\n`;
+        await octokit.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: issueNumber,
+            body: `${prefix}${chunk}`,
+        });
+    }
+}
 function buildAgentPrompt(params) {
     let prompt = "You are fixing a bug in this codebase based on a GitHub bug report issue.\n\n" +
         "The bug report structure is:\n" +
-        "- USER STORY: describes the requirement/feature being tested\n" +
         "- TEST CASE: describes preconditions, step-by-step actions, and expected result\n" +
         "- BUG DESCRIPTION: explains expected vs actual behavior (the bug)\n\n" +
         `ISSUE TITLE: ${params.issueTitle}\n\n` +
@@ -485,9 +503,6 @@ async function run() {
         const issueResponse = await octokit.rest.issues.get({ owner, repo, issue_number: issueNumber });
         const issueTitle = issueResponse.data.title ?? "";
         const issueBody = issueResponse.data.body ?? "";
-        const userStoryRefRaw = (0, lib_1.extractIssueFormFieldValue)(issueBody, "User story issue (reference)") ??
-            (0, lib_1.extractIssueFormFieldValue)(issueBody, "User story issue") ??
-            "";
         const testCaseRefRaw = (0, lib_1.extractIssueFormFieldValue)(issueBody, "Test case issue (reference)") ??
             (0, lib_1.extractIssueFormFieldValue)(issueBody, "Test case issue") ??
             "";
@@ -496,33 +511,12 @@ async function run() {
         const testCommandSuite = (0, lib_1.extractIssueFormFieldValue)(issueBody, "Test command (full suite for regression)") || testCommandSuiteFallback;
         // Extract branch from issue body (takes priority over base-branch input)
         const issueBranch = (0, lib_1.extractIssueFormFieldValue)(issueBody, "Branch where bug was discovered") || "";
-        const userStoryRef = (0, lib_1.parseGitHubIssueRef)({
-            input: userStoryRefRaw,
-            defaultOwner: owner,
-            defaultRepo: repo,
-        });
         const testCaseRef = (0, lib_1.parseGitHubIssueRef)({
             input: testCaseRefRaw,
             defaultOwner: owner,
             defaultRepo: repo,
         });
         const referencedContexts = [];
-        if (userStoryRef) {
-            try {
-                const refIssue = await octokit.rest.issues.get({
-                    owner: userStoryRef.owner,
-                    repo: userStoryRef.repo,
-                    issue_number: userStoryRef.number,
-                });
-                referencedContexts.push("REFERENCED USER STORY ISSUE\n" +
-                    `URL: ${userStoryRef.url}\n` +
-                    `Title: ${refIssue.data.title ?? ""}\n\n` +
-                    `Body:\n${refIssue.data.body ?? ""}\n`);
-            }
-            catch (e) {
-                core.warning(`Failed to fetch referenced user story issue (${userStoryRef.url}). Continuing without it. ${e instanceof Error ? e.message : String(e)}`);
-            }
-        }
         if (testCaseRef) {
             try {
                 const refIssue = await octokit.rest.issues.get({
@@ -539,7 +533,11 @@ async function run() {
                 core.warning(`Failed to fetch referenced test case issue (${testCaseRef.url}). Continuing without it. ${e instanceof Error ? e.message : String(e)}`);
             }
         }
-        const issueBodyForPrompt = (0, lib_1.truncate)(issueBody + (referencedContexts.length ? `\n\n${referencedContexts.join("\n\n")}` : ""), 180_000);
+        const issueBodyWithoutUserStory = (0, lib_1.stripIssueSections)(issueBody, [
+            "User story issue (reference)",
+            "User story issue",
+        ]);
+        const issueBodyForPrompt = (0, lib_1.truncate)(issueBodyWithoutUserStory + (referencedContexts.length ? `\n\n${referencedContexts.join("\n\n")}` : ""), 180_000);
         const repoResponse = await octokit.rest.repos.get({ owner, repo });
         const defaultBranch = repoResponse.data.default_branch;
         // Priority: issue branch field > action input > repo default
@@ -606,21 +604,29 @@ async function run() {
                 core.info((0, lib_1.truncate)(agentResult.stderr, 2000));
             }
             core.info(`=== END ${agentType.toUpperCase()} OUTPUT ===`);
+            const fullAgentOutput = `Attempt: ${attempt + 1}/${retryMax}\n` +
+                `Agent: ${agentType}\n` +
+                `Model: ${model}\n` +
+                `Working directory: ${workingDirectory}\n` +
+                `Exit code: ${agentResult.exitCode}\n\n` +
+                `STDOUT:\n${agentResult.stdout || "(empty)"}\n\n` +
+                `STDERR:\n${agentResult.stderr || "(empty)"}`;
             if (agentResult.exitCode !== 0) {
+                await postCommentWithChunks({
+                    octokit: octokit,
+                    owner: owner,
+                    repo: repo,
+                    issueNumber: issueNumber,
+                    body: `${agentType} failed to generate a fix (attempt ${attempt + 1}/${retryMax}).\n\n` +
+                        `Full ${agentType} output:\n\n` +
+                        `\`\`\`\n${fullAgentOutput}\n\`\`\``,
+                });
                 if (attempt === retryMax - 1) {
-                    await octokit.rest.issues.createComment({
-                        owner,
-                        repo,
-                        issue_number: issueNumber,
-                        body: `${agentType} failed to generate a fix after ${retryMax} attempt(s).\n\n` +
-                            "Output:\n" +
-                            `\n\n\`\`\`\n${(0, lib_1.truncate)((agentResult.stdout + "\n" + agentResult.stderr).trim(), 6000)}\n\`\`\`\n`,
-                    });
                     core.setFailed(`${agentType} failed to generate a fix.`);
                     return;
                 }
                 core.warning(`${agentType} failed (attempt ${attempt + 1}/${retryMax}), will retry...`);
-                previousTestFailure = (0, lib_1.truncate)((agentResult.stdout + "\n" + agentResult.stderr).trim(), 10_000);
+                previousTestFailure = (0, lib_1.truncate)(fullAgentOutput, 10_000);
                 continue;
             }
             // Check if agent made any changes
@@ -823,6 +829,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.truncate = truncate;
 exports.extractIssueFormFieldValue = extractIssueFormFieldValue;
 exports.parseGitHubIssueRef = parseGitHubIssueRef;
+exports.stripIssueSections = stripIssueSections;
 function truncate(s, maxChars) {
     if (s.length <= maxChars)
         return s;
@@ -893,6 +900,32 @@ function parseGitHubIssueRef(params) {
     if (!Number.isFinite(number) || number <= 0)
         return undefined;
     return { owner, repo, number, url: u.toString() };
+}
+function stripIssueSections(issueBody, labels) {
+    if (!issueBody.trim())
+        return issueBody;
+    const lines = issueBody.split(/\r?\n/);
+    const headingRegexes = labels.map((label) => new RegExp(`^#{1,6}\\s*${escapeRegExp(label)}\\s*$`, "i"));
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+        const isHeading = /^#{1,6}\s+/.test(trimmed);
+        const matchesTargetHeading = headingRegexes.some((re) => re.test(trimmed));
+        if (isHeading && matchesTargetHeading) {
+            // Skip lines until the next heading (or end of file)
+            while (i + 1 < lines.length) {
+                const nextLine = lines[i + 1];
+                if (/^#{1,6}\s+/.test(nextLine.trim())) {
+                    break;
+                }
+                i++;
+            }
+            continue;
+        }
+        out.push(line);
+    }
+    return out.join("\n").trimEnd();
 }
 function escapeRegExp(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

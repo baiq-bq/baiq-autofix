@@ -3,7 +3,7 @@
 > Automatic bug fixes, powered by **Baiq**, the IA of BQ
 
 A GitHub Action that automatically fixes bugs using AI agents. Supports two agents:
-- **Codex** (default): OpenAI's Codex CLI with `gpt-5.2` model
+- **Codex** (default): OpenAI's Codex CLI with `gpt-5-codex` model
 - **Aider**: [Aider](https://github.com/paul-gauthier/aider) with full codebase awareness via its repository map
 
 Both agents are isolated alternatives that can be selected via the `agent` input.
@@ -33,7 +33,7 @@ Both agents are isolated alternatives that can be selected via the `agent` input
 | `agent` | ❌ | `codex` | Agent to use for fixing bugs (`codex` or `aider`) |
 | `openai-api-key` | ⚠️ | — | OpenAI API key (required for Codex, and for Aider with OpenAI models) |
 | `anthropic-api-key` | ⚠️ | — | Anthropic API key (required if using Aider with Claude models) |
-| `codex-model` | ❌ | `gpt-5.2` | Model to use with Codex agent |
+| `codex-model` | ❌ | `gpt-5-codex` | Model to use with Codex agent |
 | `aider-model` | ❌ | `gpt-4o` | Model to use with Aider (e.g., `gpt-4o`, `claude-3-5-sonnet-20241022`) |
 | `required-label` | ❌ | `autofix` | Only run if the issue has this label |
 | `base-branch` | ❌ | repo default | Base branch for the PR |
@@ -96,7 +96,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           # agent: codex  # default
-          # codex-model: gpt-5.2  # default
+          # codex-model: gpt-5-codex  # default
           # Test commands can be provided here as fallbacks, but issue fields take priority
           # test-command-specific: npm run test:specific
           # test-command-suite: npm test
@@ -248,7 +248,7 @@ It triggers when an issue is labeled `autofix` and runs `npm test` before openin
 
 ### Codex (default)
 OpenAI's Codex CLI agent. Requires `openai-api-key`.
-- Default model: `gpt-5.2`
+- Default model: `gpt-5-codex`
 - Configure with `codex-model` input
 
 ### Aider

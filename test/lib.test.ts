@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { extractIssueFormFieldValue, parseGitHubIssueRef, truncate } from "../src/lib";
+import { extractIssueFormFieldValue, parseGitHubIssueRef, stripIssueSections, truncate } from "../src/lib";
 
 test("truncate returns original string when under limit", () => {
   assert.equal(truncate("abc", 10), "abc");
@@ -68,4 +68,20 @@ test("parseGitHubIssueRef parses same-repo #123 shorthand", () => {
 
 test("parseGitHubIssueRef returns undefined for non-github URL", () => {
   assert.equal(parseGitHubIssueRef({ input: "https://example.com/acme/app/issues/1" }), undefined);
+});
+
+test("stripIssueSections removes user story section but keeps others", () => {
+  const body = [
+    "### User story issue (reference)",
+    "#123",
+    "",
+    "### Test case issue (reference)",
+    "#456",
+    "",
+    "### Bug description",
+    "It fails.",
+  ].join("\n");
+
+  const cleaned = stripIssueSections(body, ["User story issue (reference)", "User story issue"]);
+  assert.equal(cleaned, ["### Test case issue (reference)", "#456", "", "### Bug description", "It fails."].join("\n"));
 });

@@ -4,10 +4,38 @@ import * as path from "path";
 import * as fs from "fs";
 import OpenAI from "openai";
 
-import { extractIssueFormFieldValue, parseGitHubIssueRef, truncate } from "./lib";
+import { extractIssueFormFieldValue, parseGitHubIssueRef, stripIssueSections, truncate } from "./lib";
 import { exec, shellEscape } from "./utils";
 import { getAgent, isValidAgentType, DEFAULT_CODEX_MODEL, DEFAULT_AIDER_MODEL } from "./agents";
 import type { AgentType } from "./agents";
+
+const ISSUE_COMMENT_CHUNK_SIZE = 60_000;
+
+async function postCommentWithChunks(params: {
+  octokit: ReturnType<typeof github.getOctokit>;
+  owner: string;
+  repo: string;
+  issueNumber: number;
+  body: string;
+}): Promise<void> {
+  const { octokit, owner, repo, issueNumber, body } = params;
+  if (body.length <= ISSUE_COMMENT_CHUNK_SIZE) {
+    await octokit.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body });
+    return;
+  }
+
+  const totalChunks = Math.ceil(body.length / ISSUE_COMMENT_CHUNK_SIZE);
+  for (let i = 0; i < totalChunks; i++) {
+    const chunk = body.slice(i * ISSUE_COMMENT_CHUNK_SIZE, (i + 1) * ISSUE_COMMENT_CHUNK_SIZE);
+    const prefix = `Log chunk ${i + 1}/${totalChunks}\n\n`;
+    await octokit.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: issueNumber,
+      body: `${prefix}${chunk}`,
+    });
+  }
+}
 
 function buildAgentPrompt(params: {
   issueTitle: string;
@@ -19,7 +47,6 @@ function buildAgentPrompt(params: {
   let prompt =
     "You are fixing a bug in this codebase based on a GitHub bug report issue.\n\n" +
     "The bug report structure is:\n" +
-    "- USER STORY: describes the requirement/feature being tested\n" +
     "- TEST CASE: describes preconditions, step-by-step actions, and expected result\n" +
     "- BUG DESCRIPTION: explains expected vs actual behavior (the bug)\n\n" +
     `ISSUE TITLE: ${params.issueTitle}\n\n` +
@@ -175,10 +202,6 @@ async function run(): Promise<void> {
     const issueTitle = issueResponse.data.title ?? "";
     const issueBody = issueResponse.data.body ?? "";
 
-    const userStoryRefRaw =
-      extractIssueFormFieldValue(issueBody, "User story issue (reference)") ??
-      extractIssueFormFieldValue(issueBody, "User story issue") ??
-      "";
     const testCaseRefRaw =
       extractIssueFormFieldValue(issueBody, "Test case issue (reference)") ??
       extractIssueFormFieldValue(issueBody, "Test case issue") ??
@@ -193,11 +216,6 @@ async function run(): Promise<void> {
     // Extract branch from issue body (takes priority over base-branch input)
     const issueBranch = extractIssueFormFieldValue(issueBody, "Branch where bug was discovered") || "";
 
-    const userStoryRef = parseGitHubIssueRef({
-      input: userStoryRefRaw,
-      defaultOwner: owner,
-      defaultRepo: repo,
-    });
     const testCaseRef = parseGitHubIssueRef({
       input: testCaseRefRaw,
       defaultOwner: owner,
@@ -205,26 +223,6 @@ async function run(): Promise<void> {
     });
 
     const referencedContexts: string[] = [];
-    if (userStoryRef) {
-      try {
-        const refIssue = await octokit.rest.issues.get({
-          owner: userStoryRef.owner,
-          repo: userStoryRef.repo,
-          issue_number: userStoryRef.number,
-        });
-        referencedContexts.push(
-          "REFERENCED USER STORY ISSUE\n" +
-            `URL: ${userStoryRef.url}\n` +
-            `Title: ${refIssue.data.title ?? ""}\n\n` +
-            `Body:\n${refIssue.data.body ?? ""}\n`
-        );
-      } catch (e) {
-        core.warning(
-          `Failed to fetch referenced user story issue (${userStoryRef.url}). Continuing without it. ${e instanceof Error ? e.message : String(e)}`
-        );
-      }
-    }
-
     if (testCaseRef) {
       try {
         const refIssue = await octokit.rest.issues.get({
@@ -245,8 +243,13 @@ async function run(): Promise<void> {
       }
     }
 
+    const issueBodyWithoutUserStory = stripIssueSections(issueBody, [
+      "User story issue (reference)",
+      "User story issue",
+    ]);
+
     const issueBodyForPrompt = truncate(
-      issueBody + (referencedContexts.length ? `\n\n${referencedContexts.join("\n\n")}` : ""),
+      issueBodyWithoutUserStory + (referencedContexts.length ? `\n\n${referencedContexts.join("\n\n")}` : ""),
       180_000
     );
 
@@ -325,22 +328,33 @@ async function run(): Promise<void> {
       }
       core.info(`=== END ${agentType.toUpperCase()} OUTPUT ===`);
 
+      const fullAgentOutput =
+        `Attempt: ${attempt + 1}/${retryMax}\n` +
+        `Agent: ${agentType}\n` +
+        `Model: ${model}\n` +
+        `Working directory: ${workingDirectory}\n` +
+        `Exit code: ${agentResult.exitCode}\n\n` +
+        `STDOUT:\n${agentResult.stdout || "(empty)"}\n\n` +
+        `STDERR:\n${agentResult.stderr || "(empty)"}`;
+
       if (agentResult.exitCode !== 0) {
+        await postCommentWithChunks({
+          octokit: octokit!,
+          owner: owner!,
+          repo: repo!,
+          issueNumber: issueNumber!,
+          body:
+            `${agentType} failed to generate a fix (attempt ${attempt + 1}/${retryMax}).\n\n` +
+            `Full ${agentType} output:\n\n` +
+            `\`\`\`\n${fullAgentOutput}\n\`\`\``,
+        });
+
         if (attempt === retryMax - 1) {
-          await octokit.rest.issues.createComment({
-            owner,
-            repo,
-            issue_number: issueNumber,
-            body:
-              `${agentType} failed to generate a fix after ${retryMax} attempt(s).\n\n` +
-              "Output:\n" +
-              `\n\n\`\`\`\n${truncate((agentResult.stdout + "\n" + agentResult.stderr).trim(), 6000)}\n\`\`\`\n`,
-          });
           core.setFailed(`${agentType} failed to generate a fix.`);
           return;
         }
         core.warning(`${agentType} failed (attempt ${attempt + 1}/${retryMax}), will retry...`);
-        previousTestFailure = truncate((agentResult.stdout + "\n" + agentResult.stderr).trim(), 10_000);
+        previousTestFailure = truncate(fullAgentOutput, 10_000);
         continue;
       }
 

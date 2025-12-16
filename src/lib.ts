@@ -82,6 +82,38 @@ export function parseGitHubIssueRef(params: {
   return { owner, repo, number, url: u.toString() };
 }
 
+export function stripIssueSections(issueBody: string, labels: string[]): string {
+  if (!issueBody.trim()) return issueBody;
+
+  const lines = issueBody.split(/\r?\n/);
+  const headingRegexes = labels.map((label) => new RegExp(`^#{1,6}\\s*${escapeRegExp(label)}\\s*$`, "i"));
+
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    const isHeading = /^#{1,6}\s+/.test(trimmed);
+    const matchesTargetHeading = headingRegexes.some((re) => re.test(trimmed));
+
+    if (isHeading && matchesTargetHeading) {
+      // Skip lines until the next heading (or end of file)
+      while (i + 1 < lines.length) {
+        const nextLine = lines[i + 1];
+        if (/^#{1,6}\s+/.test(nextLine.trim())) {
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  return out.join("\n").trimEnd();
+}
+
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
