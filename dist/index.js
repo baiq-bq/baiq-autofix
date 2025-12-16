@@ -174,6 +174,7 @@ const os = __importStar(__nccwpck_require__(857));
 const path = __importStar(__nccwpck_require__(6928));
 const fs = __importStar(__nccwpck_require__(9896));
 const utils_1 = __nccwpck_require__(9277);
+// Note: fs, os, path are still used by configureCodex()
 exports.DEFAULT_CODEX_MODEL = "gpt-5.2";
 function configureCodex() {
     // Create ~/.codex/config.toml with preferred_auth_method = "apikey"
@@ -212,30 +213,21 @@ function runCodex(params) {
     core.exportVariable("OPENAI_API_KEY", params.openaiApiKey);
     // Step 1: Configure codex to use API key authentication
     configureCodex();
-    // Step 2: Write prompt to a temp file to avoid shell escaping issues
-    const promptFile = path.join(os.tmpdir(), `codex-prompt-${Date.now()}.txt`);
-    fs.writeFileSync(promptFile, params.prompt, "utf8");
     // Run from working directory if specified, otherwise repo root
     const cwd = params.workingDirectory || params.repoRoot;
-    // Step 3: Run codex with OPENAI_API_KEY set inline in the command
+    // Step 2: Run codex with OPENAI_API_KEY set inline in the command
+    // Usage: codex exec --full-auto --model <MODEL> [PROMPT]
     const codexCmd = `OPENAI_API_KEY=${(0, utils_1.shellEscape)(params.openaiApiKey)} ` +
         `codex --config preferred_auth_method=apikey exec --full-auto --model ${(0, utils_1.shellEscape)(params.model)} ` +
-        `--message-file ${(0, utils_1.shellEscape)(promptFile)}`;
+        `${(0, utils_1.shellEscape)(params.prompt)}`;
     core.info("Running Codex...");
-    core.info(`OPENAI_API_KEY=*** codex --approval-mode full-auto --model ${params.model} --message-file <prompt>`);
+    core.info(`OPENAI_API_KEY=*** codex exec --full-auto --model ${params.model} <prompt>`);
     const result = (0, child_process_1.spawnSync)("sh", ["-c", codexCmd], {
         cwd,
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 600_000, // 10 minute timeout
     });
-    // Clean up prompt file
-    try {
-        fs.unlinkSync(promptFile);
-    }
-    catch {
-        // Ignore cleanup errors
-    }
     return {
         stdout: result.stdout ?? "",
         stderr: result.stderr ?? "",

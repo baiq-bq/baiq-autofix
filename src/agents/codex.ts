@@ -8,6 +8,8 @@ import type { ExecResult } from "../types";
 import type { Agent, AgentParams } from "./types";
 import { exec, shellEscape } from "../utils";
 
+// Note: fs, os, path are still used by configureCodex()
+
 export const DEFAULT_CODEX_MODEL = "gpt-5.2";
 
 function configureCodex(): void {
@@ -55,21 +57,18 @@ export function runCodex(params: AgentParams): ExecResult {
   // Step 1: Configure codex to use API key authentication
   configureCodex();
 
-  // Step 2: Write prompt to a temp file to avoid shell escaping issues
-  const promptFile = path.join(os.tmpdir(), `codex-prompt-${Date.now()}.txt`);
-  fs.writeFileSync(promptFile, params.prompt, "utf8");
-
   // Run from working directory if specified, otherwise repo root
   const cwd = params.workingDirectory || params.repoRoot;
 
-  // Step 3: Run codex with OPENAI_API_KEY set inline in the command
+  // Step 2: Run codex with OPENAI_API_KEY set inline in the command
+  // Usage: codex exec --full-auto --model <MODEL> [PROMPT]
   const codexCmd =
     `OPENAI_API_KEY=${shellEscape(params.openaiApiKey!)} ` +
     `codex --config preferred_auth_method=apikey exec --full-auto --model ${shellEscape(params.model)} ` +
-    `--message-file ${shellEscape(promptFile)}`;
+    `${shellEscape(params.prompt)}`;
 
   core.info("Running Codex...");
-  core.info(`OPENAI_API_KEY=*** codex --approval-mode full-auto --model ${params.model} --message-file <prompt>`);
+  core.info(`OPENAI_API_KEY=*** codex exec --full-auto --model ${params.model} <prompt>`);
 
   const result = spawnSync("sh", ["-c", codexCmd], {
     cwd,
@@ -77,13 +76,6 @@ export function runCodex(params: AgentParams): ExecResult {
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 600_000, // 10 minute timeout
   });
-
-  // Clean up prompt file
-  try {
-    fs.unlinkSync(promptFile);
-  } catch {
-    // Ignore cleanup errors
-  }
 
   return {
     stdout: result.stdout ?? "",
