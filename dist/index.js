@@ -553,7 +553,7 @@ async function run() {
         try {
             await octokit.rest.git.getRef({ owner, repo, ref: `heads/${baseBranch}` });
         }
-        catch (e) {
+        catch {
             const msg = `Base branch '${baseBranch}' does not exist in ${owner}/${repo}. ` +
                 "Set the action input 'base-branch' to a valid branch name (recommended: the repo default branch), " +
                 "or ensure the issue field 'Branch where bug was discovered' matches an existing branch.";
