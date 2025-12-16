@@ -381,7 +381,11 @@ function buildAgentPrompt(params) {
             "2. Find the root cause of the bug in the codebase\n" +
             "3. Make the minimal fix needed so the actual behavior matches the expected behavior\n" +
             "4. Do NOT modify lockfiles (package-lock.json, pnpm-lock.yaml, yarn.lock) or .github/workflows/*\n" +
-            "5. Do NOT add unnecessary changes - keep the fix focused and minimal";
+            "5. Do NOT add unnecessary changes - keep the fix focused and minimal\n\n" +
+            "IMPORTANT RESTRICTIONS:\n" +
+            "- Do NOT run any tests - the CI system will run them\n" +
+            "- Do NOT run git commands (no git add, git commit, git push) - the CI system handles all git operations\n" +
+            "- ONLY modify the source files needed to fix the bug";
     return prompt;
 }
 async function generatePRDescription(params) {
@@ -570,6 +574,7 @@ async function run() {
         // Retry loop for agent fix + test validation
         let previousTestFailure;
         let fixSucceeded = false;
+        let successfulPrompt;
         for (let attempt = 0; attempt < retryMax; attempt++) {
             if (attempt > 0) {
                 core.info(`\n=== RETRY ATTEMPT ${attempt + 1}/${retryMax} ===`);
@@ -688,6 +693,7 @@ async function run() {
             }
             // If we reach here, fix succeeded
             fixSucceeded = true;
+            successfulPrompt = prompt;
             break;
         }
         if (!fixSucceeded) {
@@ -770,7 +776,9 @@ async function run() {
                     owner,
                     repo,
                     issue_number: issueNumber,
-                    body: `I opened a PR for this issue: ${prUrl}`,
+                    body: `I opened a PR for this issue: ${prUrl}\n\n` +
+                        `<details>\n<summary>Full prompt sent to ${agentType}</summary>\n\n` +
+                        `\`\`\`\n${(0, lib_1.truncate)(successfulPrompt ?? "", 60000)}\n\`\`\`\n</details>`,
                 });
                 break;
             }

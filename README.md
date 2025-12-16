@@ -22,7 +22,7 @@ Both agents are isolated alternatives that can be selected via the `agent` input
 6. **Runs tests** after the fix: full test suite if provided, otherwise the specific test to verify the fix.
 7. **If tests fail, retries** with failure info added to the prompt (up to `retry-max` attempts).
 8. **Generates a PR description** using OpenAI (if `add-description` is enabled) explaining the bug, root cause, and fix.
-9. If all tests pass, the action opens a PR and comments on the issue.
+9. If all tests pass, the action opens a PR and comments on the issue with the PR link and the full prompt sent to the agent (in a collapsible section).
 10. If tests fail after all retries, the action comments on the issue with details.
 
 ## Inputs
