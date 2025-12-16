@@ -397,7 +397,7 @@ function buildAgentPrompt(params) {
         "YOUR TASK:\n" +
             "1. Analyze the bug report and test failure output\n" +
             "2. Find the root cause of the bug in the codebase\n" +
-            "3. Make the minimal fix needed so the actual behavior matches the expected behavior\n" +
+            "3. Apply all necessary fixes so that the actual behavior fully matches the expected behavior. Ensure the solution is correct, efficient, and follows best practices\n" +
             "4. Do NOT modify lockfiles (package-lock.json, pnpm-lock.yaml, yarn.lock) or .github/workflows/*\n" +
             "5. Do NOT add unnecessary changes - keep the fix focused and minimal\n\n" +
             "IMPORTANT RESTRICTIONS:\n" +
