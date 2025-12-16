@@ -222,7 +222,12 @@ function runCodex(params) {
     // Step 2: Non-interactive codex login with API key via stdin
     // Using printf to avoid adding a trailing newline
     core.info("Logging in to Codex with API key...");
-    const loginResult = (0, child_process_1.spawnSync)("sh", ["-c", 'printf "%s" "$OPENAI_API_KEY" | codex login --with-api-key'], { cwd, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
+    const loginResult = (0, child_process_1.spawnSync)("sh", ["-c", 'printf "%s" "$OPENAI_API_KEY" | codex login --with-api-key'], {
+        cwd,
+        encoding: "utf8",
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+    });
     if (loginResult.status !== 0) {
         core.warning(`Codex login returned non-zero: ${loginResult.stderr}`);
     }
@@ -233,13 +238,7 @@ function runCodex(params) {
     // Pass --config preferred_auth_method="apikey" and use env for API key
     core.info("Running Codex...");
     core.info(`codex --config preferred_auth_method="apikey" exec --full-auto --model ${params.model} <prompt>`);
-    const result = (0, child_process_1.spawnSync)("codex", [
-        "--config", 'preferred_auth_method="apikey"',
-        "exec",
-        "--full-auto",
-        "--model", params.model,
-        params.prompt,
-    ], {
+    const result = (0, child_process_1.spawnSync)("codex", ["--config", 'preferred_auth_method="apikey"', "exec", "--full-auto", "--model", params.model, params.prompt], {
         cwd,
         encoding: "utf8",
         env,
