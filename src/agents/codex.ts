@@ -63,12 +63,9 @@ export function runCodex(params: AgentParams): ExecResult {
   const cwd = params.workingDirectory || params.repoRoot;
 
   // Step 3: Run codex with OPENAI_API_KEY set inline in the command
-  // --approval-mode full-auto: auto-accept all changes (non-interactive)
-  // --model: specify the model
-  // --quiet: reduce output noise
   const codexCmd =
     `OPENAI_API_KEY=${shellEscape(params.openaiApiKey!)} ` +
-    `codex --config preferred_auth_method=apikey exec --full-auto --model ${shellEscape(params.model)} --quiet ` +
+    `codex --config preferred_auth_method=apikey exec --full-auto --model ${shellEscape(params.model)} ` +
     `--message-file ${shellEscape(promptFile)}`;
 
   core.info("Running Codex...");
