@@ -174,7 +174,6 @@ const os = __importStar(__nccwpck_require__(857));
 const path = __importStar(__nccwpck_require__(6928));
 const fs = __importStar(__nccwpck_require__(9896));
 const utils_1 = __nccwpck_require__(9277);
-// Note: fs, os, path are still used by configureCodex()
 exports.DEFAULT_CODEX_MODEL = "gpt-5-codex";
 function configureCodex() {
     // Create ~/.codex/config.toml with preferred_auth_method = "apikey"
@@ -234,17 +233,30 @@ function runCodex(params) {
     else {
         core.info("Codex login successful.");
     }
-    // Step 3: Run codex exec with the prompt
-    // Pass --config preferred_auth_method="apikey" and use env for API key
+    // Step 3: Write prompt to a temp file (avoids shell escaping issues with long prompts)
+    const promptFile = path.join(os.tmpdir(), `codex-prompt-${Date.now()}.txt`);
+    fs.writeFileSync(promptFile, params.prompt, "utf8");
+    // Step 4: Run codex exec with the prompt from file
+    // Use cat to pipe prompt to codex via stdin to avoid argument length limits
     core.info("Running Codex...");
-    core.info(`codex --config preferred_auth_method="apikey" exec --full-auto --model ${params.model} <prompt>`);
-    const result = (0, child_process_1.spawnSync)("codex", ["--config", 'preferred_auth_method="apikey"', "exec", "--full-auto", "--model", params.model, params.prompt], {
+    core.info(`codex exec --full-auto --model ${params.model} < prompt.txt`);
+    const result = (0, child_process_1.spawnSync)("sh", [
+        "-c",
+        `cat "${promptFile}" | codex exec --full-auto --model "${params.model}"`,
+    ], {
         cwd,
         encoding: "utf8",
         env,
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 600_000, // 10 minute timeout
     });
+    // Clean up prompt file
+    try {
+        fs.unlinkSync(promptFile);
+    }
+    catch {
+        // Ignore cleanup errors
+    }
     return {
         stdout: result.stdout ?? "",
         stderr: result.stderr ?? "",
