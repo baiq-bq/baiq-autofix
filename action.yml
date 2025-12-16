@@ -10,7 +10,7 @@ inputs:
   agent:
     description: "Agent to use for fixing bugs (codex or aider)"
     required: false
-    default: "codex"
+    default: "aider"
   openai-api-key:
     description: "OpenAI API key (required for Codex, and for Aider with OpenAI models)"
     required: false

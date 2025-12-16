@@ -50,6 +50,13 @@ export function runAider(params: AgentParams): ExecResult {
     args.push("--subtree-only");
   }
 
+  // If test command is provided, use Aider's native test loop
+  // --test-cmd: command to run tests
+  // --auto-test: automatically run tests after changes
+  if (params.testCommand) {
+    args.push("--test-cmd", params.testCommand, "--auto-test");
+  }
+
   args.push("--model", params.model, "--message-file", promptFile);
 
   core.info("Running Aider...");

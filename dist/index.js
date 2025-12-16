@@ -84,6 +84,12 @@ function runAider(params) {
     if (params.workingDirectory && params.workingDirectory !== params.repoRoot) {
         args.push("--subtree-only");
     }
+    // If test command is provided, use Aider's native test loop
+    // --test-cmd: command to run tests
+    // --auto-test: automatically run tests after changes
+    if (params.testCommand) {
+        args.push("--test-cmd", params.testCommand, "--auto-test");
+    }
     args.push("--model", params.model, "--message-file", promptFile);
     core.info("Running Aider...");
     core.info(`aider ${args.slice(0, -2).join(" ")} --message-file <prompt>`);
@@ -446,7 +452,7 @@ Keep each section brief but informative. Use markdown formatting.`;
 }
 async function run() {
     const ghToken = core.getInput("github-token", { required: true });
-    const agentInput = core.getInput("agent") || "codex";
+    const agentInput = core.getInput("agent") || "aider";
     const openaiApiKey = core.getInput("openai-api-key") || "";
     const anthropicApiKey = core.getInput("anthropic-api-key") || "";
     const aiderModel = core.getInput("aider-model") || agents_1.DEFAULT_AIDER_MODEL;
@@ -569,26 +575,19 @@ async function run() {
         (0, utils_1.exec)(`git pull --ff-only origin ${(0, utils_1.shellEscape)(baseBranch)}`);
         const branchName = `qa/issue-${issueNumber}-${Date.now()}`;
         (0, utils_1.exec)(`git checkout -b ${(0, utils_1.shellEscape)(branchName)}`);
-        // Retry loop for agent fix + test validation
-        let previousTestFailure;
+        // Retry loop (manual for Codex) or Single Run (native loop for Aider)
         let fixSucceeded = false;
         let successfulPrompt;
-        for (let attempt = 0; attempt < retryMax; attempt++) {
-            if (attempt > 0) {
-                core.info(`\n=== RETRY ATTEMPT ${attempt + 1}/${retryMax} ===`);
-                // Reset changes from previous failed attempt
-                (0, utils_1.exec)("git checkout .", { silent: true });
-                (0, utils_1.exec)("git clean -fd", { silent: true });
-            }
-            // Build the prompt for agent (with retry info if applicable)
+        if (agentType === "aider") {
+            core.info("Using Aider with native test-driven repair loop...");
             const prompt = buildAgentPrompt({
                 issueTitle,
                 issueBody: issueBodyForPrompt,
                 testFailureOutput,
-                retryAttempt: attempt,
-                previousTestFailure,
             });
-            // Run agent - it will modify files directly
+            // Chain specific test and suite for Aider's native loop
+            // If specific test passes, it will run the suite to check for regressions
+            const testCmds = [testCommandSpecific, testCommandSuite].filter((cmd) => cmd.trim()).join(" && ");
             const agentResult = agent.run({
                 prompt,
                 repoRoot,
@@ -596,111 +595,159 @@ async function run() {
                 openaiApiKey: openaiApiKey || undefined,
                 anthropicApiKey: anthropicApiKey || undefined,
                 model,
+                testCommand: testCmds,
             });
-            core.info(`=== ${agentType.toUpperCase()} OUTPUT ===`);
-            core.info((0, lib_1.truncate)(agentResult.stdout, 4000));
-            if (agentResult.stderr) {
-                core.info(`=== ${agentType.toUpperCase()} STDERR ===`);
-                core.info((0, lib_1.truncate)(agentResult.stderr, 2000));
+            if (agentResult.exitCode === 0) {
+                fixSucceeded = true;
+                successfulPrompt = prompt;
+                core.info("Aider successfully fixed the bug and passed all tests.");
             }
-            core.info(`=== END ${agentType.toUpperCase()} OUTPUT ===`);
-            const fullAgentOutput = `Attempt: ${attempt + 1}/${retryMax}\n` +
-                `Agent: ${agentType}\n` +
-                `Model: ${model}\n` +
-                `Working directory: ${workingDirectory}\n` +
-                `Exit code: ${agentResult.exitCode}\n\n` +
-                `STDOUT:\n${agentResult.stdout || "(empty)"}\n\n` +
-                `STDERR:\n${agentResult.stderr || "(empty)"}`;
-            if (agentResult.exitCode !== 0) {
+            else {
+                core.setFailed(`Aider failed to generate a working fix (exit code ${agentResult.exitCode}).`);
                 await postCommentWithChunks({
                     octokit: octokit,
                     owner: owner,
                     repo: repo,
                     issueNumber: issueNumber,
-                    body: `${agentType} failed to generate a fix (attempt ${attempt + 1}/${retryMax}).\n\n` +
-                        `Full ${agentType} output:\n\n` +
-                        `\`\`\`\n${fullAgentOutput}\n\`\`\``,
+                    body: `Aider failed to fix the bug.\n\n` +
+                        `Full output:\n\n` +
+                        `\`\`\`\n${(0, lib_1.truncate)((agentResult.stdout || "") + "\n" + (agentResult.stderr || ""), 20000)}\n\`\`\``,
                 });
-                if (attempt === retryMax - 1) {
-                    core.setFailed(`${agentType} failed to generate a fix.`);
-                    return;
-                }
-                core.warning(`${agentType} failed (attempt ${attempt + 1}/${retryMax}), will retry...`);
-                previousTestFailure = (0, lib_1.truncate)(fullAgentOutput, 10_000);
-                continue;
+                return;
             }
-            // Check if agent made any changes
-            const status = (0, utils_1.exec)("git status --porcelain", { silent: true }).stdout.trim();
-            if (!status) {
-                if (attempt === retryMax - 1) {
-                    await octokit.rest.issues.createComment({
-                        owner,
-                        repo,
-                        issue_number: issueNumber,
-                        body: `${agentType} analyzed the issue but made no file changes after ${retryMax} attempt(s). No PR was created.`,
+        }
+        else {
+            // Manual retry loop for Codex (or other agents without native test loop)
+            let previousTestFailure;
+            for (let attempt = 0; attempt < retryMax; attempt++) {
+                if (attempt > 0) {
+                    core.info(`\n=== RETRY ATTEMPT ${attempt + 1}/${retryMax} ===`);
+                    // Reset changes from previous failed attempt
+                    (0, utils_1.exec)("git checkout .", { silent: true });
+                    (0, utils_1.exec)("git clean -fd", { silent: true });
+                }
+                // Build the prompt for agent (with retry info if applicable)
+                const prompt = buildAgentPrompt({
+                    issueTitle,
+                    issueBody: issueBodyForPrompt,
+                    testFailureOutput,
+                    retryAttempt: attempt,
+                    previousTestFailure,
+                });
+                // Run agent - it will modify files directly
+                const agentResult = agent.run({
+                    prompt,
+                    repoRoot,
+                    workingDirectory: workingDirectory !== repoRoot ? workingDirectory : undefined,
+                    openaiApiKey: openaiApiKey || undefined,
+                    anthropicApiKey: anthropicApiKey || undefined,
+                    model,
+                });
+                core.info(`=== ${agentType.toUpperCase()} OUTPUT ===`);
+                core.info((0, lib_1.truncate)(agentResult.stdout, 4000));
+                if (agentResult.stderr) {
+                    core.info(`=== ${agentType.toUpperCase()} STDERR ===`);
+                    core.info((0, lib_1.truncate)(agentResult.stderr, 2000));
+                }
+                core.info(`=== END ${agentType.toUpperCase()} OUTPUT ===`);
+                const fullAgentOutput = `Attempt: ${attempt + 1}/${retryMax}\n` +
+                    `Agent: ${agentType}\n` +
+                    `Model: ${model}\n` +
+                    `Working directory: ${workingDirectory}\n` +
+                    `Exit code: ${agentResult.exitCode}\n\n` +
+                    `STDOUT:\n${agentResult.stdout || "(empty)"}\n\n` +
+                    `STDERR:\n${agentResult.stderr || "(empty)"}`;
+                if (agentResult.exitCode !== 0) {
+                    await postCommentWithChunks({
+                        octokit: octokit,
+                        owner: owner,
+                        repo: repo,
+                        issueNumber: issueNumber,
+                        body: `${agentType} failed to generate a fix (attempt ${attempt + 1}/${retryMax}).\n\n` +
+                            `Full ${agentType} output:\n\n` +
+                            `\`\`\`\n${fullAgentOutput}\n\`\`\``,
                     });
-                    return;
+                    if (attempt === retryMax - 1) {
+                        core.setFailed(`${agentType} failed to generate a fix.`);
+                        return;
+                    }
+                    core.warning(`${agentType} failed (attempt ${attempt + 1}/${retryMax}), will retry...`);
+                    previousTestFailure = (0, lib_1.truncate)(fullAgentOutput, 10_000);
+                    continue;
                 }
-                core.warning(`${agentType} made no changes (attempt ${attempt + 1}/${retryMax}), will retry...`);
-                previousTestFailure = `${agentType} did not make any file changes. Please analyze the issue more carefully and modify the appropriate files.`;
-                continue;
-            }
-            core.info(`Files changed:\n${status}`);
-            // Run FULL TEST SUITE after agent fix to check for regressions
-            if (testCommandSuite.trim()) {
-                core.info(`Running full test suite for regression check: ${testCommandSuite}`);
-                const testRes = (0, utils_1.exec)(testCommandSuite, { silent: true, cwd: workingDirectory });
-                if (testRes.exitCode !== 0) {
-                    const testOutput = (0, lib_1.truncate)((testRes.stdout + "\n" + testRes.stderr).trim(), 10_000);
+                // Check if agent made any changes
+                const status = (0, utils_1.exec)("git status --porcelain", { silent: true }).stdout.trim();
+                if (!status) {
                     if (attempt === retryMax - 1) {
                         await octokit.rest.issues.createComment({
                             owner,
                             repo,
                             issue_number: issueNumber,
-                            body: `${agentType} generated a fix, but the full test suite failed after ${retryMax} attempt(s). PR not opened.\n\n` +
-                                "Test output:\n" +
-                                `\n\n\`\`\`\n${(0, lib_1.truncate)(testOutput, 8000)}\n\`\`\`\n`,
+                            body: `${agentType} analyzed the issue but made no file changes after ${retryMax} attempt(s). No PR was created.`,
                         });
-                        core.setFailed(`Full test suite failed after ${retryMax} attempt(s); PR not opened.`);
                         return;
                     }
-                    core.warning(`Tests failed (attempt ${attempt + 1}/${retryMax}), will retry with failure info...`);
-                    previousTestFailure = testOutput;
+                    core.warning(`${agentType} made no changes (attempt ${attempt + 1}/${retryMax}), will retry...`);
+                    previousTestFailure = `${agentType} did not make any file changes. Please analyze the issue more carefully and modify the appropriate files.`;
                     continue;
                 }
-                core.info("Full test suite passed - no regressions detected.");
-            }
-            else if (testCommandSpecific.trim()) {
-                // No full test suite, but specific test is available - run it to verify the fix
-                core.info(`No full test suite; running specific test to verify fix: ${testCommandSpecific}`);
-                const testRes = (0, utils_1.exec)(testCommandSpecific, { silent: true, cwd: workingDirectory });
-                if (testRes.exitCode !== 0) {
-                    const testOutput = (0, lib_1.truncate)((testRes.stdout + "\n" + testRes.stderr).trim(), 10_000);
-                    if (attempt === retryMax - 1) {
-                        await octokit.rest.issues.createComment({
-                            owner,
-                            repo,
-                            issue_number: issueNumber,
-                            body: `${agentType} generated a fix, but the specific test still failed after ${retryMax} attempt(s). PR not opened.\n\n` +
-                                "Test output:\n" +
-                                `\n\n\`\`\`\n${(0, lib_1.truncate)(testOutput, 8000)}\n\`\`\`\n`,
-                        });
-                        core.setFailed(`Specific test failed after ${retryMax} attempt(s); PR not opened.`);
-                        return;
+                core.info(`Files changed:\n${status}`);
+                // Run FULL TEST SUITE after agent fix to check for regressions
+                if (testCommandSuite.trim()) {
+                    core.info(`Running full test suite for regression check: ${testCommandSuite}`);
+                    const testRes = (0, utils_1.exec)(testCommandSuite, { silent: true, cwd: workingDirectory });
+                    if (testRes.exitCode !== 0) {
+                        const testOutput = (0, lib_1.truncate)((testRes.stdout + "\n" + testRes.stderr).trim(), 10_000);
+                        if (attempt === retryMax - 1) {
+                            await octokit.rest.issues.createComment({
+                                owner,
+                                repo,
+                                issue_number: issueNumber,
+                                body: `${agentType} generated a fix, but the full test suite failed after ${retryMax} attempt(s). PR not opened.\n\n` +
+                                    "Test output:\n" +
+                                    `\n\n\`\`\`\n${(0, lib_1.truncate)(testOutput, 8000)}\n\`\`\`\n`,
+                            });
+                            core.setFailed(`Full test suite failed after ${retryMax} attempt(s); PR not opened.`);
+                            return;
+                        }
+                        core.warning(`Tests failed (attempt ${attempt + 1}/${retryMax}), will retry with failure info...`);
+                        previousTestFailure = testOutput;
+                        continue;
                     }
-                    core.warning(`Specific test failed (attempt ${attempt + 1}/${retryMax}), will retry with failure info...`);
-                    previousTestFailure = testOutput;
-                    continue;
+                    core.info("Full test suite passed - no regressions detected.");
                 }
-                core.info("Specific test passed - fix verified.");
+                else if (testCommandSpecific.trim()) {
+                    // No full test suite, but specific test is available - run it to verify the fix
+                    core.info(`No full test suite; running specific test to verify fix: ${testCommandSpecific}`);
+                    const testRes = (0, utils_1.exec)(testCommandSpecific, { silent: true, cwd: workingDirectory });
+                    if (testRes.exitCode !== 0) {
+                        const testOutput = (0, lib_1.truncate)((testRes.stdout + "\n" + testRes.stderr).trim(), 10_000);
+                        if (attempt === retryMax - 1) {
+                            await octokit.rest.issues.createComment({
+                                owner,
+                                repo,
+                                issue_number: issueNumber,
+                                body: `${agentType} generated a fix, but the specific test still failed after ${retryMax} attempt(s). PR not opened.\n\n` +
+                                    "Test output:\n" +
+                                    `\n\n\`\`\`\n${(0, lib_1.truncate)(testOutput, 8000)}\n\`\`\`\n`,
+                            });
+                            core.setFailed(`Specific test failed after ${retryMax} attempt(s); PR not opened.`);
+                            return;
+                        }
+                        core.warning(`Specific test failed (attempt ${attempt + 1}/${retryMax}), will retry with failure info...`);
+                        previousTestFailure = testOutput;
+                        continue;
+                    }
+                    core.info("Specific test passed - fix verified.");
+                }
+                else {
+                    core.info("No test commands provided; proceeding to open PR.");
+                }
+                // If we reach here, fix succeeded
+                fixSucceeded = true;
+                successfulPrompt = prompt;
+                break;
             }
-            else {
-                core.info("No test commands provided; proceeding to open PR.");
-            }
-            // If we reach here, fix succeeded
-            fixSucceeded = true;
-            successfulPrompt = prompt;
-            break;
         }
         if (!fixSucceeded) {
             core.setFailed(`Failed to generate a working fix after ${retryMax} attempts.`);
