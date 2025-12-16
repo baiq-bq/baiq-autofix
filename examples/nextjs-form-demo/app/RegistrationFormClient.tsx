@@ -7,6 +7,22 @@ import { submitRegistrationAction } from "./submitRegistration";
 
 const initialState: ActionState = { ok: null };
 
+function normalizeErrorsForDisplay(errors: Record<string, string>): Array<[string, string]> {
+  const normalized = new Map(Object.entries(errors));
+  const rangeError = normalized.get("startDate");
+
+  if (
+    typeof rangeError === "string" &&
+    !normalized.has("endDate") &&
+    rangeError.toLowerCase().includes("end date must be on or after start date")
+  ) {
+    normalized.delete("startDate");
+    normalized.set("endDate", rangeError);
+  }
+
+  return Array.from(normalized.entries());
+}
+
 export function RegistrationFormClient() {
   const [state, formAction, isPending] = useActionState(submitRegistrationAction, initialState);
 
@@ -126,7 +142,7 @@ export function RegistrationFormClient() {
           <div className="resultError" data-testid="result-errors">
             <div className="resultTitle">Validation errors</div>
             <ul className="errorList">
-              {Object.entries(state.errors).map(([field, message]) => (
+              {normalizeErrorsForDisplay(state.errors).map(([field, message]) => (
                 <li key={field} data-testid={`error-${field}`}>
                   <span className="errorField">{field}</span>
                   <span className="errorMessage">{String(message)}</span>
