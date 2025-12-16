@@ -222,7 +222,7 @@ function runCodex(params) {
     // --model: specify the model
     // --quiet: reduce output noise
     const codexCmd = `OPENAI_API_KEY=${(0, utils_1.shellEscape)(params.openaiApiKey)} ` +
-        `codex --approval-mode full-auto --model ${(0, utils_1.shellEscape)(params.model)} --quiet ` +
+        `codex --config preferred_auth_method=apikey exec --full-auto --model ${(0, utils_1.shellEscape)(params.model)} --quiet ` +
         `--message-file ${(0, utils_1.shellEscape)(promptFile)}`;
     core.info("Running Codex...");
     core.info(`OPENAI_API_KEY=*** codex --approval-mode full-auto --model ${params.model} --quiet --message-file <prompt>`);
