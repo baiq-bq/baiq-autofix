@@ -1,6 +1,6 @@
 {
   "name": "baiq-autofix",
-  "version": "1.0.0",
+  "version": "0.4",
   "private": true,
   "scripts": {
     "build": "npm run build:ts && npm run build:ncc",
