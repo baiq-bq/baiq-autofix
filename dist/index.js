@@ -215,29 +215,20 @@ function runCodex(params) {
     // Step 2: Write prompt to a temp file to avoid shell escaping issues
     const promptFile = path.join(os.tmpdir(), `codex-prompt-${Date.now()}.txt`);
     fs.writeFileSync(promptFile, params.prompt, "utf8");
-    // Build codex command arguments
+    // Run from working directory if specified, otherwise repo root
+    const cwd = params.workingDirectory || params.repoRoot;
+    // Step 3: Run codex with OPENAI_API_KEY set inline in the command
     // --approval-mode full-auto: auto-accept all changes (non-interactive)
     // --model: specify the model
     // --quiet: reduce output noise
-    const args = [
-        "--approval-mode",
-        "full-auto",
-        "--model",
-        params.model,
-        "--quiet",
-        fs.readFileSync(promptFile, "utf8"),
-    ];
+    const codexCmd = `OPENAI_API_KEY=${(0, utils_1.shellEscape)(params.openaiApiKey)} ` +
+        `codex --approval-mode full-auto --model ${(0, utils_1.shellEscape)(params.model)} --quiet ` +
+        `--message-file ${(0, utils_1.shellEscape)(promptFile)}`;
     core.info("Running Codex...");
-    core.info(`codex --approval-mode full-auto --model ${params.model} --quiet <prompt>`);
-    // Build environment with API key
-    const env = { ...process.env };
-    env.OPENAI_API_KEY = params.openaiApiKey;
-    // Run from working directory if specified, otherwise repo root
-    const cwd = params.workingDirectory || params.repoRoot;
-    const result = (0, child_process_1.spawnSync)("codex", args, {
+    core.info(`OPENAI_API_KEY=*** codex --approval-mode full-auto --model ${params.model} --quiet --message-file <prompt>`);
+    const result = (0, child_process_1.spawnSync)("sh", ["-c", codexCmd], {
         cwd,
         encoding: "utf8",
-        env,
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 600_000, // 10 minute timeout
     });

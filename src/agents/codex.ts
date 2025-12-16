@@ -6,7 +6,7 @@ import * as fs from "fs";
 
 import type { ExecResult } from "../types";
 import type { Agent, AgentParams } from "./types";
-import { exec } from "../utils";
+import { exec, shellEscape } from "../utils";
 
 export const DEFAULT_CODEX_MODEL = "gpt-5.2";
 
@@ -59,33 +59,26 @@ export function runCodex(params: AgentParams): ExecResult {
   const promptFile = path.join(os.tmpdir(), `codex-prompt-${Date.now()}.txt`);
   fs.writeFileSync(promptFile, params.prompt, "utf8");
 
-  // Build codex command arguments
-  // --approval-mode full-auto: auto-accept all changes (non-interactive)
-  // --model: specify the model
-  // --quiet: reduce output noise
-  const args = [
-    "--approval-mode",
-    "full-auto",
-    "--model",
-    params.model,
-    "--quiet",
-    fs.readFileSync(promptFile, "utf8"),
-  ];
-
-  core.info("Running Codex...");
-  core.info(`codex --approval-mode full-auto --model ${params.model} --quiet <prompt>`);
-
-  // Build environment with API key
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  env.OPENAI_API_KEY = params.openaiApiKey;
-
   // Run from working directory if specified, otherwise repo root
   const cwd = params.workingDirectory || params.repoRoot;
 
-  const result = spawnSync("codex", args, {
+  // Step 3: Run codex with OPENAI_API_KEY set inline in the command
+  // --approval-mode full-auto: auto-accept all changes (non-interactive)
+  // --model: specify the model
+  // --quiet: reduce output noise
+  const codexCmd =
+    `OPENAI_API_KEY=${shellEscape(params.openaiApiKey!)} ` +
+    `codex --config preferred_auth_method=apikey exec --full-auto --model ${shellEscape(params.model)} --quiet ` +
+    `--message-file ${shellEscape(promptFile)}`;
+
+  core.info("Running Codex...");
+  core.info(
+    `OPENAI_API_KEY=*** codex --approval-mode full-auto --model ${params.model} --quiet --message-file <prompt>`
+  );
+
+  const result = spawnSync("sh", ["-c", codexCmd], {
     cwd,
     encoding: "utf8",
-    env,
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 600_000, // 10 minute timeout
   });
