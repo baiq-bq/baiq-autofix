@@ -9,6 +9,7 @@ export interface AgentParams {
   openaiApiKey?: string;
   anthropicApiKey?: string;
   model: string;
+  testCommand?: string;
 }
 
 export interface Agent {
