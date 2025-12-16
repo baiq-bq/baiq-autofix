@@ -625,8 +625,7 @@ async function run() {
                     return;
                 }
                 core.warning(`${agentType} made no changes (attempt ${attempt + 1}/${retryMax}), will retry...`);
-                previousTestFailure =
-                    `${agentType} did not make any file changes. Please analyze the issue more carefully and modify the appropriate files.`;
+                previousTestFailure = `${agentType} did not make any file changes. Please analyze the issue more carefully and modify the appropriate files.`;
                 continue;
             }
             core.info(`Files changed:\n${status}`);
