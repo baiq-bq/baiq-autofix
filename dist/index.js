@@ -218,11 +218,8 @@ function runCodex(params) {
     // Run from working directory if specified, otherwise repo root
     const cwd = params.workingDirectory || params.repoRoot;
     // Step 3: Run codex with OPENAI_API_KEY set inline in the command
-    // --approval-mode full-auto: auto-accept all changes (non-interactive)
-    // --model: specify the model
-    // --quiet: reduce output noise
     const codexCmd = `OPENAI_API_KEY=${(0, utils_1.shellEscape)(params.openaiApiKey)} ` +
-        `codex --config preferred_auth_method=apikey exec --full-auto --model ${(0, utils_1.shellEscape)(params.model)} --quiet ` +
+        `codex --config preferred_auth_method=apikey exec --full-auto --model ${(0, utils_1.shellEscape)(params.model)} ` +
         `--message-file ${(0, utils_1.shellEscape)(promptFile)}`;
     core.info("Running Codex...");
     core.info(`OPENAI_API_KEY=*** codex --approval-mode full-auto --model ${params.model} --message-file <prompt>`);
