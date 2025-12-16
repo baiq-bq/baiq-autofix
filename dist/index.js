@@ -174,7 +174,6 @@ const os = __importStar(__nccwpck_require__(857));
 const path = __importStar(__nccwpck_require__(6928));
 const fs = __importStar(__nccwpck_require__(9896));
 const utils_1 = __nccwpck_require__(9277);
-// Note: fs, os, path are still used by configureCodex()
 exports.DEFAULT_CODEX_MODEL = "gpt-5-codex";
 function configureCodex() {
     // Create ~/.codex/config.toml with preferred_auth_method = "apikey"
@@ -234,17 +233,27 @@ function runCodex(params) {
     else {
         core.info("Codex login successful.");
     }
-    // Step 3: Run codex exec with the prompt
-    // Pass --config preferred_auth_method="apikey" and use env for API key
+    // Step 3: Write prompt to a temp file (avoids shell escaping issues with long prompts)
+    const promptFile = path.join(os.tmpdir(), `codex-prompt-${Date.now()}.txt`);
+    fs.writeFileSync(promptFile, params.prompt, "utf8");
+    // Step 4: Run codex exec with the prompt from file
+    // Use cat to pipe prompt to codex via stdin to avoid argument length limits
     core.info("Running Codex...");
-    core.info(`codex --config preferred_auth_method="apikey" exec --full-auto --model ${params.model} <prompt>`);
-    const result = (0, child_process_1.spawnSync)("codex", ["--config", 'preferred_auth_method="apikey"', "exec", "--full-auto", "--model", params.model, params.prompt], {
+    core.info(`codex exec --full-auto --model ${params.model} < prompt.txt`);
+    const result = (0, child_process_1.spawnSync)("sh", ["-c", `cat "${promptFile}" | codex exec --full-auto --model "${params.model}"`], {
         cwd,
         encoding: "utf8",
         env,
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 600_000, // 10 minute timeout
     });
+    // Clean up prompt file
+    try {
+        fs.unlinkSync(promptFile);
+    }
+    catch {
+        // Ignore cleanup errors
+    }
     return {
         stdout: result.stdout ?? "",
         stderr: result.stderr ?? "",
@@ -372,7 +381,11 @@ function buildAgentPrompt(params) {
             "2. Find the root cause of the bug in the codebase\n" +
             "3. Make the minimal fix needed so the actual behavior matches the expected behavior\n" +
             "4. Do NOT modify lockfiles (package-lock.json, pnpm-lock.yaml, yarn.lock) or .github/workflows/*\n" +
-            "5. Do NOT add unnecessary changes - keep the fix focused and minimal";
+            "5. Do NOT add unnecessary changes - keep the fix focused and minimal\n\n" +
+            "IMPORTANT RESTRICTIONS:\n" +
+            "- Do NOT run any tests - the CI system will run them\n" +
+            "- Do NOT run git commands (no git add, git commit, git push) - the CI system handles all git operations\n" +
+            "- ONLY modify the source files needed to fix the bug";
     return prompt;
 }
 async function generatePRDescription(params) {
@@ -561,6 +574,7 @@ async function run() {
         // Retry loop for agent fix + test validation
         let previousTestFailure;
         let fixSucceeded = false;
+        let successfulPrompt;
         for (let attempt = 0; attempt < retryMax; attempt++) {
             if (attempt > 0) {
                 core.info(`\n=== RETRY ATTEMPT ${attempt + 1}/${retryMax} ===`);
@@ -679,6 +693,7 @@ async function run() {
             }
             // If we reach here, fix succeeded
             fixSucceeded = true;
+            successfulPrompt = prompt;
             break;
         }
         if (!fixSucceeded) {
@@ -761,7 +776,9 @@ async function run() {
                     owner,
                     repo,
                     issue_number: issueNumber,
-                    body: `I opened a PR for this issue: ${prUrl}`,
+                    body: `I opened a PR for this issue: ${prUrl}\n\n` +
+                        `<details>\n<summary>Full prompt sent to ${agentType}</summary>\n\n` +
+                        `\`\`\`\n${(0, lib_1.truncate)(successfulPrompt ?? "", 60000)}\n\`\`\`\n</details>`,
                 });
                 break;
             }

@@ -22,7 +22,7 @@ Both agents are isolated alternatives that can be selected via the `agent` input
 6. **Runs tests** after the fix: full test suite if provided, otherwise the specific test to verify the fix.
 7. **If tests fail, retries** with failure info added to the prompt (up to `retry-max` attempts).
 8. **Generates a PR description** using OpenAI (if `add-description` is enabled) explaining the bug, root cause, and fix.
-9. If all tests pass, the action opens a PR and comments on the issue.
+9. If all tests pass, the action opens a PR and comments on the issue with the PR link and the full prompt sent to the agent (in a collapsible section).
 10. If tests fail after all retries, the action comments on the issue with details.
 
 ## Inputs
@@ -33,7 +33,7 @@ Both agents are isolated alternatives that can be selected via the `agent` input
 | `agent` | ❌ | `codex` | Agent to use for fixing bugs (`codex` or `aider`) |
 | `openai-api-key` | ⚠️ | — | OpenAI API key (required for Codex, and for Aider with OpenAI models) |
 | `anthropic-api-key` | ⚠️ | — | Anthropic API key (required if using Aider with Claude models) |
-| `codex-model` | ❌ | `gpt-5-codex` | Model to use with Codex agent |
+| `codex-model` | ❌ | `gpt-5.2` | Model to use with Codex agent |
 | `aider-model` | ❌ | `gpt-4o` | Model to use with Aider (e.g., `gpt-4o`, `claude-3-5-sonnet-20241022`) |
 | `required-label` | ❌ | `autofix` | Only run if the issue has this label |
 | `base-branch` | ❌ | repo default | Base branch for the PR |

@@ -8,8 +8,6 @@ import type { ExecResult } from "../types";
 import type { Agent, AgentParams } from "./types";
 import { exec } from "../utils";
 
-// Note: fs, os, path are still used by configureCodex()
-
 export const DEFAULT_CODEX_MODEL = "gpt-5-codex";
 
 function configureCodex(): void {
@@ -80,22 +78,29 @@ export function runCodex(params: AgentParams): ExecResult {
     core.info("Codex login successful.");
   }
 
-  // Step 3: Run codex exec with the prompt
-  // Pass --config preferred_auth_method="apikey" and use env for API key
-  core.info("Running Codex...");
-  core.info(`codex --config preferred_auth_method="apikey" exec --full-auto --model ${params.model} <prompt>`);
+  // Step 3: Write prompt to a temp file (avoids shell escaping issues with long prompts)
+  const promptFile = path.join(os.tmpdir(), `codex-prompt-${Date.now()}.txt`);
+  fs.writeFileSync(promptFile, params.prompt, "utf8");
 
-  const result = spawnSync(
-    "codex",
-    ["--config", 'preferred_auth_method="apikey"', "exec", "--full-auto", "--model", params.model, params.prompt],
-    {
-      cwd,
-      encoding: "utf8",
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 600_000, // 10 minute timeout
-    }
-  );
+  // Step 4: Run codex exec with the prompt from file
+  // Use cat to pipe prompt to codex via stdin to avoid argument length limits
+  core.info("Running Codex...");
+  core.info(`codex exec --full-auto --model ${params.model} < prompt.txt`);
+
+  const result = spawnSync("sh", ["-c", `cat "${promptFile}" | codex exec --full-auto --model "${params.model}"`], {
+    cwd,
+    encoding: "utf8",
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 600_000, // 10 minute timeout
+  });
+
+  // Clean up prompt file
+  try {
+    fs.unlinkSync(promptFile);
+  } catch {
+    // Ignore cleanup errors
+  }
 
   return {
     stdout: result.stdout ?? "",
