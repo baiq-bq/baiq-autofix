@@ -41,7 +41,7 @@ body:
       description: The branch where the bug was found. The fix will be created from this branch and the PR will target it.
       placeholder: "main"
     validations:
-      required: false
+      required: true
 
   - type: input
     id: test_command_specific
