@@ -42,8 +42,8 @@ test("getAgent throws for invalid agent type", () => {
   );
 });
 
-test("DEFAULT_CODEX_MODEL is gpt-5-codex", () => {
-  assert.strictEqual(DEFAULT_CODEX_MODEL, "gpt-5-codex");
+test("DEFAULT_CODEX_MODEL is gpt-5.2", () => {
+  assert.equal(DEFAULT_CODEX_MODEL, "gpt-5.2");
 });
 
 test("DEFAULT_AIDER_MODEL is gpt-4o", () => {

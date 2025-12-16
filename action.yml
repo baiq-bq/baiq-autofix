@@ -26,7 +26,7 @@ inputs:
   codex-model:
     description: "Model to use with Codex agent"
     required: false
-    default: "gpt-5-codex"
+    default: "gpt-5.2"
   required-label:
     description: "Only run if the issue has this label"
     required: false

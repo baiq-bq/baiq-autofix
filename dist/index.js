@@ -240,10 +240,7 @@ function runCodex(params) {
     // Use cat to pipe prompt to codex via stdin to avoid argument length limits
     core.info("Running Codex...");
     core.info(`codex exec --full-auto --model ${params.model} < prompt.txt`);
-    const result = (0, child_process_1.spawnSync)("sh", [
-        "-c",
-        `cat "${promptFile}" | codex exec --full-auto --model "${params.model}"`,
-    ], {
+    const result = (0, child_process_1.spawnSync)("sh", ["-c", `cat "${promptFile}" | codex exec --full-auto --model "${params.model}"`], {
         cwd,
         encoding: "utf8",
         env,
