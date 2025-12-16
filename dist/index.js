@@ -175,7 +175,7 @@ const path = __importStar(__nccwpck_require__(6928));
 const fs = __importStar(__nccwpck_require__(9896));
 const utils_1 = __nccwpck_require__(9277);
 // Note: fs, os, path are still used by configureCodex()
-exports.DEFAULT_CODEX_MODEL = "gpt-5.2";
+exports.DEFAULT_CODEX_MODEL = "gpt-5-codex";
 function configureCodex() {
     // Create ~/.codex/config.toml with preferred_auth_method = "apikey"
     const codexConfigDir = path.join(os.homedir(), ".codex");
@@ -209,22 +209,40 @@ function runCodex(params) {
         };
     }
     // Export OPENAI_API_KEY to the GitHub Actions environment (persists for the job)
-    // This ensures the API key is available in the shell profile for codex
     core.exportVariable("OPENAI_API_KEY", params.openaiApiKey);
-    // Step 1: Configure codex to use API key authentication
+    // Step 1: Configure codex to use API key authentication (file-based)
     configureCodex();
     // Run from working directory if specified, otherwise repo root
     const cwd = params.workingDirectory || params.repoRoot;
-    // Step 2: Run codex with OPENAI_API_KEY set inline in the command
-    // Usage: codex exec --full-auto --model <MODEL> [PROMPT]
-    const codexCmd = `OPENAI_API_KEY=${(0, utils_1.shellEscape)(params.openaiApiKey)} ` +
-        `codex --config preferred_auth_method=apikey exec --full-auto --model ${(0, utils_1.shellEscape)(params.model)} ` +
-        `${(0, utils_1.shellEscape)(params.prompt)}`;
+    // Build environment with API key for all commands (pass via env, not command string)
+    const env = {
+        ...process.env,
+        OPENAI_API_KEY: params.openaiApiKey.trim(),
+    };
+    // Step 2: Non-interactive codex login with API key via stdin
+    // Using printf to avoid adding a trailing newline
+    core.info("Logging in to Codex with API key...");
+    const loginResult = (0, child_process_1.spawnSync)("sh", ["-c", 'printf "%s" "$OPENAI_API_KEY" | codex login --with-api-key'], { cwd, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
+    if (loginResult.status !== 0) {
+        core.warning(`Codex login returned non-zero: ${loginResult.stderr}`);
+    }
+    else {
+        core.info("Codex login successful.");
+    }
+    // Step 3: Run codex exec with the prompt
+    // Pass --config preferred_auth_method="apikey" and use env for API key
     core.info("Running Codex...");
-    core.info(`OPENAI_API_KEY=*** codex exec --full-auto --model ${params.model} <prompt>`);
-    const result = (0, child_process_1.spawnSync)("sh", ["-c", codexCmd], {
+    core.info(`codex --config preferred_auth_method="apikey" exec --full-auto --model ${params.model} <prompt>`);
+    const result = (0, child_process_1.spawnSync)("codex", [
+        "--config", 'preferred_auth_method="apikey"',
+        "exec",
+        "--full-auto",
+        "--model", params.model,
+        params.prompt,
+    ], {
         cwd,
         encoding: "utf8",
+        env,
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 600_000, // 10 minute timeout
     });
