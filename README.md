@@ -2,7 +2,11 @@
 
 > Automatic bug fixes, powered by **Baiq**, the IA of BQ
 
-A GitHub Action that automatically fixes bugs using [Aider](https://github.com/paul-gauthier/aider). Aider has full codebase awareness via its repository map, making it ideal for fixing bugs in large projects. Supports both OpenAI and Anthropic models.
+A GitHub Action that automatically fixes bugs using AI agents. Supports two agents:
+- **Codex** (default): OpenAI's Codex CLI with `gpt-5.2` model
+- **Aider**: [Aider](https://github.com/paul-gauthier/aider) with full codebase awareness via its repository map
+
+Both agents are isolated alternatives that can be selected via the `agent` input.
 
 ## How it works
 
@@ -26,20 +30,24 @@ A GitHub Action that automatically fixes bugs using [Aider](https://github.com/p
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `github-token` | ✅ | — | GitHub token (use `secrets.GITHUB_TOKEN`) |
-| `openai-api-key` | ⚠️ | — | OpenAI API key (required if using OpenAI models) |
-| `anthropic-api-key` | ⚠️ | — | Anthropic API key (required if using Claude models) |
-| `model` | ❌ | `gpt-4o` | Model to use with Aider (e.g., `gpt-4o`, `claude-3-5-sonnet-20241022`, `o1-preview`) |
+| `agent` | ❌ | `codex` | Agent to use for fixing bugs (`codex` or `aider`) |
+| `openai-api-key` | ⚠️ | — | OpenAI API key (required for Codex, and for Aider with OpenAI models) |
+| `anthropic-api-key` | ⚠️ | — | Anthropic API key (required if using Aider with Claude models) |
+| `codex-model` | ❌ | `gpt-5.2` | Model to use with Codex agent |
+| `aider-model` | ❌ | `gpt-4o` | Model to use with Aider (e.g., `gpt-4o`, `claude-3-5-sonnet-20241022`) |
 | `required-label` | ❌ | `autofix` | Only run if the issue has this label |
 | `base-branch` | ❌ | repo default | Base branch for the PR |
 | `test-command-specific` | ❌ | (empty) | Fallback command for specific bug test (overridden by issue field) |
 | `test-command-suite` | ❌ | (empty) | Fallback command for full test suite (overridden by issue field) |
-| `aider-version` | ❌ | (latest) | Version of `aider-chat` to install |
-| `working-directory` | ❌ | (repo root) | Working directory for test commands and Aider |
-| `retry-max` | ❌ | `3` | Maximum retries when tests fail after Aider fix |
+| `codex-version` | ❌ | (latest) | Version of `@openai/codex` to install (only for codex agent) |
+| `aider-version` | ❌ | (latest) | Version of `aider-chat` to install (only for aider agent) |
+| `working-directory` | ❌ | (repo root) | Working directory for test commands and agent |
+| `retry-max` | ❌ | `3` | Maximum retries when tests fail after agent fix |
 | `add-description` | ❌ | `true` | Generate AI-powered PR description explaining the bug and fix |
 | `description-model` | ❌ | `gpt-4o` | OpenAI model used for generating PR description |
 
-> ⚠️ At least one of `openai-api-key` or `anthropic-api-key` must be provided.
+> ⚠️ **Codex agent** requires `openai-api-key`.
+> ⚠️ **Aider agent** requires at least one of `openai-api-key` or `anthropic-api-key`.
 
 ## Outputs
 
@@ -82,19 +90,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Setup Python (for Aider)
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Run Baiq Autofix
+      - name: Run Baiq Autofix (with Codex - default)
         uses: baiq-bq/baiq-autofix@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          # Or use Anthropic:
-          # anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # model: claude-3-5-sonnet-20241022
+          # agent: codex  # default
+          # codex-model: gpt-5.2  # default
           # Test commands can be provided here as fallbacks, but issue fields take priority
           # test-command-specific: npm run test:specific
           # test-command-suite: npm test
@@ -207,11 +209,6 @@ To have the action run E2E tests (e.g., Playwright) before opening a PR:
 - name: Install Playwright browsers
   run: npx playwright install chromium --with-deps
 
-- name: Setup Python (for Aider)
-  uses: actions/setup-python@v5
-  with:
-    python-version: '3.11'
-
 - name: Run Baiq Autofix
   uses: baiq-bq/baiq-autofix@v1
   with:
@@ -247,26 +244,52 @@ This repo has a workflow to dogfood the action on itself:
 
 It triggers when an issue is labeled `autofix` and runs `npm test` before opening a PR.
 
-## Supported Models
+## Agents
 
-### OpenAI (requires `openai-api-key`)
+### Codex (default)
+OpenAI's Codex CLI agent. Requires `openai-api-key`.
+- Default model: `gpt-5.2`
+- Configure with `codex-model` input
+
+### Aider
+[Aider](https://github.com/paul-gauthier/aider) with full codebase awareness via its repository map.
+
+**Supported models for Aider:**
+
+#### OpenAI (requires `openai-api-key`)
 - `gpt-4o` (default) — fast, capable, cost-effective
 - `gpt-4-turbo` — more capable, higher cost
 - `o1-preview` — reasoning model
 
-### Anthropic (requires `anthropic-api-key`)
+#### Anthropic (requires `anthropic-api-key`)
 - `claude-3-5-sonnet-20241022` — excellent for code
 - `claude-3-opus-20240229` — most capable Claude model
+
+**Example using Aider:**
+```yml
+- name: Setup Python (for Aider)
+  uses: actions/setup-python@v5
+  with:
+    python-version: '3.11'
+
+- name: Run Baiq Autofix with Aider
+  uses: baiq-bq/baiq-autofix@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    agent: aider
+    openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+    aider-model: gpt-4o
+```
 
 ## Notes
 
 - The workflow must have `contents: write`, `pull-requests: write`, and `issues: write` permissions.
-- **Python 3.9+ is required** — add `actions/setup-python@v5` to your workflow.
+- **Python 3.9+ is required when using Aider** — add `actions/setup-python@v5` to your workflow.
 - The action only runs when the issue has the `required-label` (default: `autofix`).
 - If a branch is specified in the issue, the fix is created from that branch and the PR targets it.
-- If tests fail after Aider makes changes, the action comments on the issue and does **not** open a PR.
-- Aider is instructed not to modify lockfiles or `.github/workflows/` files.
-- Aider runs with `--yes --no-git` for non-interactive execution in CI.
+- If tests fail after the agent makes changes, the action comments on the issue and does **not** open a PR.
+- The agent is instructed not to modify lockfiles or `.github/workflows/` files.
+- Codex runs with `--approval-mode full-auto` and Aider runs with `--yes-always --no-auto-commits` for non-interactive execution in CI.
 
 ## Development
 
