@@ -72,9 +72,7 @@ export function runCodex(params: AgentParams): ExecResult {
     `--message-file ${shellEscape(promptFile)}`;
 
   core.info("Running Codex...");
-  core.info(
-    `OPENAI_API_KEY=*** codex --approval-mode full-auto --model ${params.model} --quiet --message-file <prompt>`
-  );
+  core.info(`OPENAI_API_KEY=*** codex --approval-mode full-auto --model ${params.model} --message-file <prompt>`);
 
   const result = spawnSync("sh", ["-c", codexCmd], {
     cwd,
